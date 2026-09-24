@@ -40,27 +40,27 @@ Custom kernels (Metal on Apple, Triton on NVIDIA) are optional and live in [Opti
 
 ## Roadmap at a Glance
 
-| Milestone | Question | Answer |
-|-----------|----------|--------|
-| M1 | How does a model generate tokens? | Autoregressive loop |
-| M2 | How do I turn it into a service? | Request + Engine |
-| M3 | What if many requests arrive at once? | Scheduler loop |
-| M4 | Who is responsible for what? | Layer separation |
-| M5 | What is a request over time? | State machine |
-| M6 | Running one request at a time wastes the GPU | Static batching |
-| M7 | Some requests in a batch finish early | Continuous batching |
-| M8 | Each request wants different sampling settings | Per-request sampling |
-| M9 | Where is the time actually going? | Profiling |
-| M10 | What does the model actually compute? | Own model + packed tokens |
-| M11 | Why recompute everything every step? | KV cache + `ForwardMode` |
-| M12 | Should scheduling data and execution data be the same? | `ScheduleBatch` / `ForwardBatch` |
-| M13 | Who decides how attention reads K/V? | `AttentionBackend` |
-| M14 | Who manages KV memory, and what if it runs out? | Token KV pool + admission + retract |
-| M15 | Is the runtime really model-agnostic? | Second model: GPT-2 |
-| M16 | Why can't requests share computation? | Radix cache + schedule policy |
-| M17 | A huge prompt is blocking the GPU | Chunked prefill |
-| M18 | The CPU and GPU keep waiting on each other | Overlap scheduling |
-| M19 | — | Mini inference runtime |
+| Milestone | Question | Answer | Done |
+|-----------|----------|--------|------|
+| M1 | How does a model generate tokens? | Autoregressive loop | ✅ |
+| M2 | How do I turn it into a service? | Request + Engine |  |
+| M3 | What if many requests arrive at once? | Scheduler loop |  |
+| M4 | Who is responsible for what? | Layer separation |  |
+| M5 | What is a request over time? | State machine |  |
+| M6 | Running one request at a time wastes the GPU | Static batching |  |
+| M7 | Some requests in a batch finish early | Continuous batching |  |
+| M8 | Each request wants different sampling settings | Per-request sampling |  |
+| M9 | Where is the time actually going? | Profiling |  |
+| M10 | What does the model actually compute? | Own model + packed tokens |  |
+| M11 | Why recompute everything every step? | KV cache + `ForwardMode` |  |
+| M12 | Should scheduling data and execution data be the same? | `ScheduleBatch` / `ForwardBatch` |  |
+| M13 | Who decides how attention reads K/V? | `AttentionBackend` |  |
+| M14 | Who manages KV memory, and what if it runs out? | Token KV pool + admission + retract |  |
+| M15 | Is the runtime really model-agnostic? | Second model: GPT-2 |  |
+| M16 | Why can't requests share computation? | Radix cache + schedule policy |  |
+| M17 | A huge prompt is blocking the GPU | Chunked prefill |  |
+| M18 | The CPU and GPU keep waiting on each other | Overlap scheduling |  |
+| M19 | — | Mini inference runtime |  |
 
 ## M1 — Minimal Qwen3
 
