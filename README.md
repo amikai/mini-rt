@@ -14,7 +14,7 @@ After about M14, the SGLang scheduler, model runner, and KV cache code should re
 
 ## Model
 
-The whole roadmap uses [Qwen3-0.6B](https://huggingface.co/Qwen/Qwen3-0.6B). It is small enough to run on a laptop, and its architecture matches the models SGLang serves in production: RoPE, grouped-query attention (GQA), RMSNorm, and a SwiGLU MLP. Using the same model from M1 onward means the tokenizer, EOS tokens, KV cache shape, and position handling never change underneath the runtime.
+The whole roadmap uses [Qwen3-0.6B](https://huggingface.co/Qwen/Qwen3-0.6B). It is small enough to run on a laptop, and its architecture matches the models SGLang serves in production: RoPE, grouped-query attention (GQA), RMSNorm, and a SwiGLU MLP. Using the same model from M1 onward means the tokenizer, EOS tokens, KV cache shape, and position handling never change underneath the runtime while it is being built. M18 then adds GPT-2 as a second model to test that the runtime does not depend on Qwen3.
 
 ## Roadmap at a Glance
 
@@ -37,11 +37,12 @@ The whole roadmap uses [Qwen3-0.6B](https://huggingface.co/Qwen/Qwen3-0.6B). It 
 | M15 | Does the scheduler need to know about the GPU? | Backend boundary |
 | M16 | What happens below the operator? | Custom GPU kernel |
 | M17 | Contiguous memory is hard to manage | Paged KV cache + paged attention |
-| M18 | Why can't requests share computation? | Prefix cache |
-| M19 | How do I manage many prefixes? | Radix cache |
-| M20 | A huge prompt is blocking the GPU | Chunked prefill |
-| M21 | The CPU and GPU keep waiting on each other | Overlap scheduling |
-| M22 | — | Mini inference runtime |
+| M18 | Is the runtime really model-agnostic? | Second model: GPT-2 |
+| M19 | Why can't requests share computation? | Prefix cache |
+| M20 | How do I manage many prefixes? | Radix cache + schedule policy |
+| M21 | A huge prompt is blocking the GPU | Chunked prefill |
+| M22 | The CPU and GPU keep waiting on each other | Overlap scheduling |
+| M23 | — | Mini inference runtime |
 
 ---
 
@@ -279,11 +280,14 @@ Replace the Hugging Face model with a hand-written Qwen3. Load only the pretrain
 - Grouped-query attention (GQA): 16 query heads share 8 KV heads
 - Per-head RMSNorm on Q and K, as Qwen3 does
 - SwiGLU MLP
-- A `ModelConfig` with `num_layers`, `num_kv_heads`, `head_dim`, `vocab_size`, `eos_token_ids`, and `dtype`
+- A `ModelConfig` with `num_layers`, `num_heads`, `num_kv_heads`, `head_dim`, `vocab_size`, `max_context_len`, `eos_token_ids`, and `dtype`
+- A model interface, `forward(batch) -> logits`, that `ModelRunner` calls without knowing the model type
+- A model registry that selects the model implementation and its `ModelConfig` by name
+- Attention as a shared module that takes Q, K, V and returns the attention output; RoPE and Q/K norm stay in the Qwen3 code
 - Validate logits against the Hugging Face model within a tolerance
 - Re-run the M9 benchmarks as the new baseline
 
-Out of scope: KV cache, custom kernels, other model architectures.
+Out of scope: KV cache, custom kernels, a second model architecture (see M18).
 
 **Learn**
 
@@ -291,6 +295,7 @@ Out of scope: KV cache, custom kernels, other model architectures.
 - Attention is the only operation that mixes tokens; every other layer works on each token independently.
 - How GQA sets the size of the KV cache, and how RoPE depends on correct token positions.
 - The runtime can only change how attention reads K/V if it owns the model code.
+- Which parts are model-specific (embedding, norm, MLP, position encoding) and which parts the runtime shares across models (attention, KV access).
 
 Reference: [tiny-llm](https://skyzh.github.io/tiny-llm/) Week 1 builds the same Qwen3 pieces step by step.
 
@@ -431,6 +436,7 @@ Request A: block 1, block 4, block 8
 - Per-request logical block tables instead of contiguous buffers
 - Blocks allocated as sequences grow and released when they finish
 - Paged attention in plain PyTorch: look up each request's block table, gather its K/V from the physical blocks, then run attention
+- Paged attention replaces the shared attention module from M10, so the Qwen3 layer code does not change
 - Block tables travel to the model through `ForwardBatch`
 - Validate output against the contiguous KV cache from M14
 
@@ -445,7 +451,31 @@ Out of scope: prefix sharing, fused paged attention kernels such as FlashInfer o
 
 ---
 
-## M18 — Prefix Cache
+## M18 — Second Model: GPT-2
+
+**Build**
+
+Add GPT-2 Small as a second model to prove that the runtime is model-agnostic.
+
+- A GPT-2 implementation registered in the model registry, with its own `ModelConfig`
+- GPT-2-specific pieces: learned position embedding, LayerNorm with bias, GELU MLP, and multi-head attention (`num_kv_heads = num_heads`)
+- Load Hugging Face weights, including transposing the `Conv1D` weights into regular linear layers
+- Reuse the shared paged attention module from M17
+- The scheduler rejects requests longer than `max_context_len` (1024 for GPT-2) at admission
+- Validate logits against the Hugging Face GPT-2 model
+- Success condition: only the new model file, its `ModelConfig`, and its tokenizer are added; `Engine`, `Scheduler`, `Sampler`, `KVCacheManager`, and paged attention do not change
+
+Out of scope: running both models in one engine at the same time.
+
+**Learn**
+
+- Where the model boundary actually sits, tested by a real second model instead of assumed.
+- A different position encoding and attention layout only change the model code and `ModelConfig`.
+- Model limits such as maximum context length are runtime concerns, because admission depends on them.
+
+---
+
+## M19 — Prefix Cache
 
 **Build**
 
@@ -463,20 +493,28 @@ B: system prompt + document + question B
 
 ---
 
-## M19 — Radix Cache
+## M20 — Radix Cache
 
 **Build**
 
 Replace the hash-based prefix cache with a radix tree that manages variable-length prefixes.
 
+Split the scheduler's policy from its mechanism:
+
+- Mechanism stays in `Scheduler`: waiting and running queues, KV capacity checks, block allocation, and building `ScheduleBatch`
+- Policy moves behind a `SchedulePolicy` interface that orders the waiting queue, for example `order(waiting) -> list[Request]`
+- At least two policies, selected by configuration: FCFS and longest-prefix-match, which runs requests with the most cached prefix first
+- Compare cache hit rate and TTFT between the two policies on the same workload
+
 **Learn**
 
 - Prefix matching, cache organization, and cache-aware scheduling.
+- Separating policy from mechanism lets the scheduling algorithm change without touching queue or memory management.
 - Why SGLang's RadixAttention / radix cache is valuable.
 
 ---
 
-## M20 — Chunked Prefill
+## M21 — Chunked Prefill
 
 **Build**
 
@@ -492,7 +530,7 @@ chunk 1 → decode step → chunk 2 → decode step → chunk 3
 
 ---
 
-## M21 — Overlap Scheduling
+## M22 — Overlap Scheduling
 
 **Build**
 
@@ -509,7 +547,7 @@ GPU executes step N  ║  CPU prepares step N+1
 
 ---
 
-## M22 — Mini Inference Runtime
+## M23 — Mini Inference Runtime
 
 **Build**
 
@@ -518,7 +556,7 @@ The complete architecture:
 ```text
                     Engine
                       │
-                 Scheduler
+                 Scheduler ──── SchedulePolicy
                 /          \
           waiting         running
               │
@@ -530,7 +568,7 @@ The complete architecture:
               │
           ModelRunner ──── Sampler
               │
-             Model
+             Model ──── ModelRegistry
               │
         Attention / MLP
               │
