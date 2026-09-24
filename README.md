@@ -22,7 +22,7 @@ After M19, the SGLang scheduler, model runner, and KV cache code should read as 
 
 The simplest version is often one SGLang already has. For example, SGLang's `torch_native` attention backend runs attention one request at a time in a Python loop, reading each request's KV slots from the pool. That is exactly the attention this repo uses from M11 onward.
 
-Each milestone ends with a **Compare with SGLang** line that lists the SGLang files to read next. Paths are relative to `python/sglang/srt/` on SGLang `main` as of September 2026.
+Each milestone ends with a **Compare with SGLang** line that lists the SGLang files to read next. Paths are relative to `python/sglang/srt/` on SGLang `main` as of September 2026, unless written in full.
 
 ## Model
 
@@ -30,13 +30,13 @@ The whole roadmap uses [Qwen3-0.6B](https://huggingface.co/Qwen/Qwen3-0.6B). It 
 
 ## Hardware
 
-Every milestone must run on both Apple Silicon (PyTorch MPS) and NVIDIA GPUs (PyTorch CUDA), selected by a single `device` setting. The core roadmap uses only PyTorch operators, so the same code runs on both. The places where the platforms differ are small and explicit:
+Every milestone must run on both Apple Silicon (PyTorch MPS) and NVIDIA GPUs (PyTorch CUDA), selected by a single `device` setting. M1–M19 use only PyTorch operators, so the same code runs on both. The places where the platforms differ are small and explicit:
 
 - Device synchronization before reading a timer (M10)
 - The memory budget used to size the KV pool (M15)
 - How much CPU/GPU overlap is possible (M19)
-
-Custom kernels (Metal on Apple, Triton on NVIDIA) are optional and live in [Optional Milestones](#optional-milestones).
+- Custom kernels: Metal on Apple through `torch.mps.compile_shader`, Triton on NVIDIA (M20, M21). The PyTorch version stays as the reference and the fallback.
+- How KV moves between processes (M22)
 
 ## Roadmap at a Glance
 
@@ -61,7 +61,10 @@ Custom kernels (Metal on Apple, Triton on NVIDIA) are optional and live in [Opti
 | M17 | Why can't requests share computation? | Radix cache + schedule policy |  |
 | M18 | A huge prompt is blocking the GPU | Chunked prefill |  |
 | M19 | The CPU and GPU keep waiting on each other | Overlap scheduling |  |
-| M20 | — | Mini inference runtime |  |
+| M20 | Can one layer run faster than PyTorch? | Custom kernel: RMSNorm (Metal / Triton) |  |
+| M21 | Why copy K/V out of the pool before attention? | Attention kernel backend (Metal / Triton) |  |
+| M22 | Prefill keeps interrupting decode | Prefill/decode disaggregation |  |
+| M23 | — | Mini inference runtime |  |
 
 ## M1 — Minimal Qwen3
 
@@ -586,7 +589,83 @@ GPU executes step N  ║  CPU prepares step N+1
 
 **Compare with SGLang**: `event_loop_overlap()` in `managers/scheduler.py`, `FutureMap` in `managers/overlap_utils.py`, which generalizes "use the output tensor as the next input".
 
-## M20 — Mini Inference Runtime
+## M20 — Custom Kernel: RMSNorm
+
+**Build**
+
+Replace one PyTorch operator with a hand-written kernel on each platform.
+
+- A `BaseFusedOp` base class with `forward_native`, `forward_triton`, and `forward_mps`. `forward()` picks one once, on first call: `forward_triton` on NVIDIA, `forward_mps` on Apple, otherwise `forward_native`.
+- `RMSNorm` becomes a `BaseFusedOp`. `forward_native` is the existing PyTorch code.
+- **Apple**: a Metal kernel, compiled and loaded with `torch.mps.compile_shader`
+- **NVIDIA**: a Triton kernel
+- A second version that fuses the residual add into the norm, like SGLang's `fused_add_rmsnorm`
+- Validate each kernel against `forward_native` on random inputs and on real activations, within a stated tolerance
+- Benchmark the op alone and end-to-end tokens/s, with and without the kernel
+
+Out of scope: kernels for other layers, autotuning.
+
+**Learn**
+
+- The path from operator to kernel: threads, threadgroups (Metal) or program IDs (Triton), memory loads, and a parallel reduction.
+- Why a fused kernel beats a chain of PyTorch ops: fewer launches and fewer round trips to device memory.
+- How one layer interface hides several platform implementations.
+
+**Compare with SGLang**: `BaseFusedOp` in `python/sglang/kernels/fused_op.py` (outside `srt/`; its docstring lists the full dispatch priority), `RMSNorm` in `layers/layernorm.py`. SGLang separates kernel backends such as `forward_triton` from platform paths such as `forward_cuda`, and has no Apple platform; `forward_mps` here plays the role of its `forward_<dispatch_key>` for out-of-tree platforms. Its prebuilt CUDA kernels come from the separate `sglang-kernel` package, imported as `sgl_kernel`.
+
+## M21 — Attention Kernel Backend
+
+**Build**
+
+A second `AttentionBackend` whose kernels read K/V directly from the pool through `kv_indices`, without the gather step of `TorchNativeBackend`.
+
+- `MetalBackend` on Apple and `TritonBackend` on NVIDIA, selected by an `attention_backend` setting. `TorchNativeBackend` stays as the reference.
+- The batch's KV slots become one flat `kv_indices` tensor plus a `kv_indptr` tensor of per-request offsets, built in `ForwardBatch.init_new()`
+- Decode kernel first: one query token per request, loop over that request's slots, online softmax
+- Then the extend kernel: causal attention over the new tokens plus the cached prefix from M17
+- GQA inside the kernel: each query head reads its shared KV head
+- Validate against `TorchNativeBackend`, then measure decode step time as batch size and context length grow
+- Success condition: only the new backend and the `ForwardBatch` metadata change; the model, scheduler, and KV pool do not
+
+Out of scope: split-KV decode for very long contexts, paged blocks larger than one token.
+
+**Learn**
+
+- Why decode attention is memory-bound, and what reading scattered slots costs.
+- Online softmax: computing attention in one pass without storing the full score matrix, the core idea of FlashAttention.
+- Why real backends take a flat `indptr` layout instead of a list per request.
+- M14's boundary, tested by a real second backend.
+
+**Compare with SGLang**: `TritonAttnBackend` in `layers/attention/triton_backend.py` (`init_forward_metadata()` builds `kv_indptr` and `kv_indices`). The Triton kernels live outside `srt/`, in `python/sglang/kernels/ops/attention/decode_attention.py` and `python/sglang/kernels/ops/attention/extend_attention.py`.
+
+## M22 — Prefill/Decode Disaggregation
+
+**Build**
+
+Run extend and decode in separate workers, and move the KV cache between them.
+
+- Two processes, each with its own `Scheduler`, `ModelRunner`, and KV pool. The prefill worker runs only `EXTEND`; the decode worker runs only `DECODE`.
+- A small router in front: every request goes to the prefill worker first
+- Before prefill starts, the decode worker reserves slots for the request in its own pool. Admission now happens on both sides.
+- After prefill, the prefill worker sends the first sampled token and the request's K/V to the decode worker, which writes them into the reserved slots and adds the request to `running_batch`
+- KV transfer through CPU shared memory on both platforms. MPS tensors cannot be shared between processes. CUDA IPC on NVIDIA is an optional second transport.
+- The prefill worker frees its slots only after the decode worker confirms the transfer
+- Validate: with greedy sampling, output is token-identical to the non-disaggregated runtime
+- Measure: transfer time against prefill time per request, and TTFT and ITL against M19 on a mixed workload
+
+On one Apple GPU both workers share the same GPU, so the goal is a correct mechanism, not a speedup. The speedup needs separate GPUs.
+
+Out of scope: multiple machines, RDMA, more than one worker per side, layer-by-layer transfer overlapped with prefill.
+
+**Learn**
+
+- Disaggregation removes the interference between compute-bound extend and memory-bound decode; chunked prefill (M18) only reduces it.
+- The KV cache becomes data that moves, and moving it has a cost that must stay below the cost of the interference it removes.
+- Two schedulers must agree on memory: who reserves slots, who frees them, and what happens when a transfer fails.
+
+**Compare with SGLang**: `disaggregation/prefill.py`, `disaggregation/decode.py`, the KV transfer interface in `disaggregation/base/conn.py`, and `disaggregation/mooncake/` for a real transport.
+
+## M23 — Mini Inference Runtime
 
 **Build**
 
@@ -613,13 +692,17 @@ ModelRunner ───────────── Sampler
 Model (Qwen3 / GPT-2) ─── ModelRegistry
   │
 AttentionBackend ──────── KV pool (K/V buffers per layer)
+  │  (TorchNative / Metal / Triton)
+CustomOp kernels (Metal / Triton)
   │
 Apple GPU / NVIDIA GPU    (Profiler measures every layer above)
 ```
 
-SGLang also has a `TpModelWorker` between the scheduler and `ModelRunner`, which exists for tensor parallelism. This repo runs on one device, so `Scheduler` calls `ModelRunner` directly.
+With disaggregation (M22), the router sends each request through two copies of this stack: a prefill worker, then a decode worker. The request's K/V moves between their KV pools.
 
-Out of scope: tensor parallelism, pipeline parallelism, MoE, distributed serving, speculative decoding, grammar-constrained decoding, LoRA, quantization.
+SGLang also has a `TpModelWorker` between the scheduler and `ModelRunner`, which exists for tensor parallelism. This repo runs on one device per worker, so `Scheduler` calls `ModelRunner` directly.
+
+Out of scope: tensor parallelism, pipeline parallelism, MoE, multi-node serving, speculative decoding, grammar-constrained decoding, LoRA, quantization.
 
 **Learn**
 
@@ -629,10 +712,6 @@ Out of scope: tensor parallelism, pipeline parallelism, MoE, distributed serving
 ## Optional Milestones
 
 These are not needed to understand SGLang's design. Each one goes deeper into a single topic and can be done after the milestone it depends on.
-
-**Custom RMSNorm kernel** (after M11). Replace one operator with a hand-written kernel: Metal on Apple via `torch.mps.compile_shader`, Triton on NVIDIA. Validate against the PyTorch version and benchmark it. Learn the path from operator to kernel, and why a fused kernel beats a chain of PyTorch ops.
-
-**Triton attention backend** (after M15). A second `AttentionBackend` whose decode kernel reads K/V directly through `kv_indices`, without the gather step. Compare with `layers/attention/triton_backend.py`.
 
 **Blocks larger than one token** (after M17). Make the slot size a `page_size` setting and support 16 tokens per block. Learn what gets harder: partially filled blocks, and prefix matching that must align to block boundaries.
 
