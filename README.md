@@ -10,7 +10,7 @@ Reading a production inference engine directly is hard. Abstractions such as the
 
 So this repo does not clone SGLang feature by feature. It starts from a bare Qwen3 generation loop and runs into the same problems SGLang was built to solve, one at a time, solving each one by hand. Each milestone adds exactly one core idea and answers one new systems question.
 
-After M16, the SGLang scheduler, model runner, and KV cache code should read as optimized versions of things already built here.
+After M19, the SGLang scheduler, model runner, and KV cache code should read as optimized versions of things already built here.
 
 ## Design Rule
 
@@ -20,21 +20,21 @@ After M16, the SGLang scheduler, model runner, and KV cache code should read as 
 - Inside each component, use the easiest code to understand: Python lists, plain loops, and plain PyTorch.
 - A simplification is allowed only if SGLang's version reads as an optimized form of mine. A simplification that teaches a different mental model, one I would have to unlearn, is not allowed.
 
-The simplest version is often one SGLang already has. For example, SGLang's `torch_native` attention backend runs attention one request at a time in a Python loop, reading each request's KV slots from the pool. That is exactly the attention this repo uses from M10 onward.
+The simplest version is often one SGLang already has. For example, SGLang's `torch_native` attention backend runs attention one request at a time in a Python loop, reading each request's KV slots from the pool. That is exactly the attention this repo uses from M11 onward.
 
 Each milestone ends with a **Compare with SGLang** line that lists the SGLang files to read next. Paths are relative to `python/sglang/srt/` on SGLang `main` as of September 2026.
 
 ## Model
 
-The whole roadmap uses [Qwen3-0.6B](https://huggingface.co/Qwen/Qwen3-0.6B). It is small enough to run on a laptop, and its architecture matches the models SGLang serves in production: RoPE, grouped-query attention (GQA), RMSNorm, and a SwiGLU MLP. Using the same model from M1 onward means the tokenizer, EOS tokens, KV cache shape, and position handling never change underneath the runtime while it is being built. M15 then adds GPT-2 as a second model to test that the runtime does not depend on Qwen3.
+The whole roadmap uses [Qwen3-0.6B](https://huggingface.co/Qwen/Qwen3-0.6B). It is small enough to run on a laptop, and its architecture matches the models SGLang serves in production: RoPE, grouped-query attention (GQA), RMSNorm, and a SwiGLU MLP. Using the same model from M1 onward means the tokenizer, EOS tokens, KV cache shape, and position handling never change underneath the runtime while it is being built. M16 then adds GPT-2 as a second model to test that the runtime does not depend on Qwen3.
 
 ## Hardware
 
 Every milestone must run on both Apple Silicon (PyTorch MPS) and NVIDIA GPUs (PyTorch CUDA), selected by a single `device` setting. The core roadmap uses only PyTorch operators, so the same code runs on both. The places where the platforms differ are small and explicit:
 
-- Device synchronization before reading a timer (M9)
-- The memory budget used to size the KV pool (M14)
-- How much CPU/GPU overlap is possible (M18)
+- Device synchronization before reading a timer (M10)
+- The memory budget used to size the KV pool (M15)
+- How much CPU/GPU overlap is possible (M19)
 
 Custom kernels (Metal on Apple, Triton on NVIDIA) are optional and live in [Optional Milestones](#optional-milestones).
 
@@ -44,23 +44,24 @@ Custom kernels (Metal on Apple, Triton on NVIDIA) are optional and live in [Opti
 |-----------|----------|--------|------|
 | M1 | How does a model generate tokens? | Autoregressive loop | ✅ |
 | M2 | How do I turn it into a service? | Request + Engine |  |
-| M3 | What if many requests arrive at once? | Scheduler loop |  |
-| M4 | Who is responsible for what? | Layer separation |  |
-| M5 | What is a request over time? | State machine |  |
-| M6 | Running one request at a time wastes the GPU | Static batching |  |
-| M7 | Some requests in a batch finish early | Continuous batching |  |
-| M8 | Each request wants different sampling settings | Per-request sampling |  |
-| M9 | Where is the time actually going? | Profiling |  |
-| M10 | What does the model actually compute? | Own model + packed tokens |  |
-| M11 | Why recompute everything every step? | KV cache + `ForwardMode` |  |
-| M12 | Should scheduling data and execution data be the same? | `ScheduleBatch` / `ForwardBatch` |  |
-| M13 | Who decides how attention reads K/V? | `AttentionBackend` |  |
-| M14 | Who manages KV memory, and what if it runs out? | Token KV pool + admission + retract |  |
-| M15 | Is the runtime really model-agnostic? | Second model: GPT-2 |  |
-| M16 | Why can't requests share computation? | Radix cache + schedule policy |  |
-| M17 | A huge prompt is blocking the GPU | Chunked prefill |  |
-| M18 | The CPU and GPU keep waiting on each other | Overlap scheduling |  |
-| M19 | — | Mini inference runtime |  |
+| M3 | How do clients reach the engine? | Minimal HTTP server |  |
+| M4 | What if many requests arrive at once? | Scheduler loop |  |
+| M5 | Who is responsible for what? | Layer separation |  |
+| M6 | What is a request over time? | State machine |  |
+| M7 | Running one request at a time wastes the GPU | Static batching |  |
+| M8 | Some requests in a batch finish early | Continuous batching |  |
+| M9 | Each request wants different sampling settings | Per-request sampling |  |
+| M10 | Where is the time actually going? | Profiling |  |
+| M11 | What does the model actually compute? | Own model + packed tokens |  |
+| M12 | Why recompute everything every step? | KV cache + `ForwardMode` |  |
+| M13 | Should scheduling data and execution data be the same? | `ScheduleBatch` / `ForwardBatch` |  |
+| M14 | Who decides how attention reads K/V? | `AttentionBackend` |  |
+| M15 | Who manages KV memory, and what if it runs out? | Token KV pool + admission + retract |  |
+| M16 | Is the runtime really model-agnostic? | Second model: GPT-2 |  |
+| M17 | Why can't requests share computation? | Radix cache + schedule policy |  |
+| M18 | A huge prompt is blocking the GPU | Chunked prefill |  |
+| M19 | The CPU and GPU keep waiting on each other | Overlap scheduling |  |
+| M20 | — | Mini inference runtime |  |
 
 ## M1 — Minimal Qwen3
 
@@ -111,7 +112,30 @@ Out of scope: queues, scheduling, batching, caching.
 - Serving a model is different from calling a model.
 - Request lifecycle, runtime state, capacity, and admission.
 
-## M3 — Scheduler Loop
+## M3 — Minimal HTTP Server
+
+**Build**
+
+Put the M2 `Engine` behind the simplest possible HTTP server.
+
+- A FastAPI app with one endpoint, `POST /generate`, using a subset of SGLang's native format
+  - Request: `text`, `sampling_params.max_new_tokens`
+  - Response: `text`, `output_ids`, `meta_info` (`id`, `finish_reason`, `prompt_tokens`, `completion_tokens`)
+- The handler calls `Engine` directly and blocks until the request finishes
+- If `Engine` is already running a request, return `503 Service Unavailable` immediately
+- One process: server, tokenizer, and model live together
+
+Out of scope: queues, streaming, OpenAI-compatible API, chat templates, separate processes.
+
+**Learn**
+
+- An HTTP server accepts many concurrent clients, but the engine runs one request at a time. The next milestone closes this gap.
+- The busy check is a race: two handler threads can both see "idle". Use a non-blocking lock.
+- FastAPI runs `def` handlers in a threadpool and `async def` handlers on the event loop. A blocking model call inside `async def` freezes the whole server.
+
+**Compare with SGLang**: `/generate` in `entrypoints/http_server.py`, `GenerateReqInput` in `managers/io_struct.py`.
+
+## M4 — Scheduler Loop
 
 **Build**
 
@@ -130,6 +154,7 @@ while True:
 - A `waiting_queue` in FIFO order
 - One running request at a time; the next waiting request starts when it finishes
 - No model or PyTorch logic inside the scheduler
+- The scheduler loop runs in a background thread. The HTTP handler puts a `Req` into `waiting_queue` and waits on a `threading.Event` that the scheduler sets when the request finishes. No more `503`.
 
 ```text
 submit A, B, C  →  execution order: A, B, C
@@ -146,7 +171,7 @@ Out of scope: batching, KV cache, advanced scheduling policies.
 
 **Compare with SGLang**: `event_loop_normal()` in `managers/scheduler.py`.
 
-## M4 — Runtime Layer Separation
+## M5 — Runtime Layer Separation
 
 **Build**
 
@@ -160,7 +185,7 @@ Engine
 ```
 
 - No model logic in `Scheduler`, no queue logic in `ModelRunner`, no model knowledge in `Sampler`
-- Behavior stays identical to M3
+- Behavior stays identical to M4
 
 **Learn**
 
@@ -169,7 +194,7 @@ Engine
 
 **Compare with SGLang**: `model_executor/model_runner.py` (`ModelRunner.sample()`), `layers/sampler.py`.
 
-## M5 — Request State Machine
+## M6 — Request State Machine
 
 **Build**
 
@@ -193,7 +218,7 @@ Out of scope: batching, KV cache.
 
 **Compare with SGLang**: `Req` and the `FINISH_*` classes in `managers/schedule_batch.py`.
 
-## M6 — Static Batching
+## M7 — Static Batching
 
 **Build**
 
@@ -210,7 +235,7 @@ Out of scope: continuous batching, KV cache.
 - Why GPU throughput depends on batching.
 - How to handle mismatched sequence lengths with padding, masks, and a batch dimension.
 
-## M7 — Continuous Batching
+## M8 — Continuous Batching
 
 **Build**
 
@@ -234,14 +259,14 @@ Out of scope: KV cache.
 
 **Compare with SGLang**: `filter_batch()` and `merge_batch()` in `managers/schedule_batch.py`.
 
-## M8 — Per-Request Sampling
+## M9 — Per-Request Sampling
 
 **Build**
 
 Replace greedy-only decoding with sampling parameters that belong to each request.
 
 - `SamplingParams` on each `Req`: `temperature`, `top_k`, `top_p`, and an optional seed
-- `temperature = 0` means greedy, so M1–M7 behavior is still reachable
+- `temperature = 0` means greedy, so M1–M8 behavior is still reachable
 - The `Sampler` handles one batch where every row can have different parameters
 - Parameters are turned into per-row tensors, so sampling runs as batched tensor ops rather than a Python loop over requests
 
@@ -255,7 +280,7 @@ Out of scope: repetition penalties, logit bias, constrained or grammar-based dec
 
 **Compare with SGLang**: `sampling/sampling_params.py`, `sampling/sampling_batch_info.py`.
 
-## M9 — Profiling & Observability
+## M10 — Profiling & Observability
 
 **Build**
 
@@ -289,7 +314,7 @@ compute amplification = processed_tokens / generated_tokens
 - The core engineering loop: measure → understand → optimize → measure again.
 - CPU wall-clock latency is not GPU execution time; asynchronous GPU execution must be synchronized before timing.
 
-## M10 — Own Model + Packed Tokens
+## M11 — Own Model + Packed Tokens
 
 **Build**
 
@@ -321,9 +346,9 @@ seq_lens:  [3, 2, 4]
 Validation:
 
 - Validate logits against the Hugging Face model within a tolerance
-- Re-run the M9 benchmarks as the new baseline
+- Re-run the M10 benchmarks as the new baseline
 
-Out of scope: KV cache, custom kernels, a second model architecture (see M15).
+Out of scope: KV cache, custom kernels, a second model architecture (see M16).
 
 **Learn**
 
@@ -336,11 +361,11 @@ Out of scope: KV cache, custom kernels, a second model architecture (see M15).
 
 Reference: [tiny-llm](https://skyzh.github.io/tiny-llm/) Week 1 builds the same Qwen3 pieces step by step.
 
-## M11 — KV Cache + ForwardMode
+## M12 — KV Cache + ForwardMode
 
 **Build**
 
-Remove the redundant computation that M9 exposed.
+Remove the redundant computation that M10 exposed.
 
 - Per-request KV cache: each request owns one K tensor and one V tensor per layer, and each new token appends to them
 - A `ForwardMode` enum with two values:
@@ -349,9 +374,9 @@ Remove the redundant computation that M9 exposed.
 - One forward path for both modes. Only attention looks at the mode.
 - A batch is either all `EXTEND` or all `DECODE`. `get_next_batch_to_run()` runs a prefill batch when new requests are waiting, and otherwise runs a decode batch for `running_batch`.
 - Output is validated against the non-cached implementation
-- Re-run the M9 benchmarks and compare forward latency, ITL, processed tokens, and compute amplification against M10
+- Re-run the M10 benchmarks and compare forward latency, ITL, processed tokens, and compute amplification against M11
 
-SGLang calls prefill `EXTEND` because, once prefix caching exists (M16), a new request extends a cached prefix instead of always starting from zero. This repo uses the same name from the start.
+SGLang calls prefill `EXTEND` because, once prefix caching exists (M17), a new request extends a cached prefix instead of always starting from zero. This repo uses the same name from the start.
 
 Out of scope: memory pools, prefix sharing, mixing extend and decode in one batch.
 
@@ -363,7 +388,7 @@ Out of scope: memory pools, prefix sharing, mixing extend and decode in one batc
 
 **Compare with SGLang**: `ForwardMode` in `model_executor/forward_batch_info.py`, `get_next_batch_to_run()` in `managers/scheduler.py`.
 
-## M12 — ScheduleBatch / ForwardBatch
+## M13 — ScheduleBatch / ForwardBatch
 
 **Build**
 
@@ -389,7 +414,7 @@ No new optimization behavior.
 
 **Compare with SGLang**: `ScheduleBatch` in `managers/schedule_batch.py`, `ForwardBatch` in `model_executor/forward_batch_info.py`, and the `ForwardBatch.init_new()` call in `managers/tp_worker.py`.
 
-## M13 — AttentionBackend
+## M14 — AttentionBackend
 
 **Build**
 
@@ -398,10 +423,10 @@ Move everything about how attention reads and writes K/V out of the model code.
 - An `AttentionBackend` with one method: `forward(q, k, v, layer_id, forward_batch)`
 - The backend writes the new K/V into the cache, then computes attention, branching on `forward_batch.forward_mode`
 - The Qwen3 attention layer computes Q, K, V, applies RoPE and Q/K norm, then calls the backend. It no longer knows where the cache lives.
-- One implementation, `TorchNativeBackend`: the per-request loop from M10 and the per-request cache from M11, moved behind the interface
+- One implementation, `TorchNativeBackend`: the per-request loop from M11 and the per-request cache from M12, moved behind the interface
 - The backend is created by `ModelRunner` and travels to the layers through `ForwardBatch`
 
-No behavior change. The test for this milestone is M14: replacing the whole KV storage must only change the backend, not the model.
+No behavior change. The test for this milestone is M15: replacing the whole KV storage must only change the backend, not the model.
 
 Out of scope: more than one backend, custom kernels.
 
@@ -412,7 +437,7 @@ Out of scope: more than one backend, custom kernels.
 
 **Compare with SGLang**: `layers/radix_attention.py` (the model-side layer), `layers/attention/base_attn_backend.py` (`forward`, `forward_extend`, `forward_decode`).
 
-## M14 — Token KV Pool + Admission + Retract
+## M15 — Token KV Pool + Admission + Retract
 
 **Build**
 
@@ -450,7 +475,7 @@ Out of scope: blocks larger than one token (see Optional Milestones), prefix sha
 
 **Compare with SGLang**: `ReqToTokenPool` and `MHATokenToKVPool` in `mem_cache/memory_pool.py` (`ReqToTokenPool` is the tensor form of every request's `kv_indices`), `TokenToKVPoolAllocator` in `mem_cache/allocator/token.py`, `prepare_for_extend()`, `prepare_for_decode()`, and `retract_decode()` in `managers/schedule_batch.py`, and `PrefillAdder` in `managers/schedule_policy.py`.
 
-## M15 — Second Model: GPT-2
+## M16 — Second Model: GPT-2
 
 **Build**
 
@@ -459,7 +484,7 @@ Add GPT-2 Small as a second model to prove that the runtime is model-agnostic.
 - A GPT-2 implementation registered in the model registry, with its own `ModelConfig`
 - GPT-2-specific pieces: learned position embedding, LayerNorm with bias, GELU MLP, and multi-head attention (`num_kv_heads = num_heads`)
 - Load Hugging Face weights, including transposing the `Conv1D` weights into regular linear layers
-- Reuse `TorchNativeBackend` and the KV pool from M14
+- Reuse `TorchNativeBackend` and the KV pool from M15
 - The scheduler rejects requests longer than `max_context_len` (1024 for GPT-2) at admission
 - Validate logits against the Hugging Face GPT-2 model
 - Success condition: only the new model file, its `ModelConfig`, and its tokenizer are added; `Engine`, `Scheduler`, `Sampler`, the KV pool, and the attention backend do not change
@@ -472,7 +497,7 @@ Out of scope: running both models in one engine at the same time.
 - A different position encoding and attention layout only change the model code and `ModelConfig`.
 - Model limits such as maximum context length are runtime concerns, because admission depends on them.
 
-## M16 — Radix Cache + Schedule Policy
+## M17 — Radix Cache + Schedule Policy
 
 **Build**
 
@@ -512,7 +537,7 @@ Out of scope: hash-based block prefix caching (vLLM's approach), cache offloadin
 
 **Compare with SGLang**: `mem_cache/radix_cache.py` (`match_prefix`, `insert`, `evict`, `inc_lock_ref`), `SchedulePolicy` in `managers/schedule_policy.py`.
 
-## M17 — Chunked Prefill
+## M18 — Chunked Prefill
 
 **Build**
 
@@ -524,7 +549,7 @@ chunk 1 → decode step → chunk 2 → decode step → chunk 3
 
 - A `chunked_prefill_size` token budget for each `EXTEND` batch
 - A prompt longer than the budget is extended one chunk per step; the scheduler keeps it as `chunked_req` until its last chunk
-- Each chunk is an ordinary `EXTEND` whose prefix is the chunks already computed, so M16's prefix handling already covers it
+- Each chunk is an ordinary `EXTEND` whose prefix is the chunks already computed, so M17's prefix handling already covers it
 - Simple interleaving rule: after each chunk, run one decode step for `running_batch`
 - Measure ITL for running requests while a long prompt arrives, with and without chunking
 
@@ -535,7 +560,7 @@ chunk 1 → decode step → chunk 2 → decode step → chunk 3
 
 **Compare with SGLang**: `chunked_req` in `managers/scheduler.py`, the chunk budget in `PrefillAdder` (`managers/schedule_policy.py`). SGLang's interleaving rule is more complex than the one used here.
 
-## M18 — Overlap Scheduling
+## M19 — Overlap Scheduling
 
 **Build**
 
@@ -561,7 +586,7 @@ GPU executes step N  ║  CPU prepares step N+1
 
 **Compare with SGLang**: `event_loop_overlap()` in `managers/scheduler.py`, `FutureMap` in `managers/overlap_utils.py`, which generalizes "use the output tensor as the next input".
 
-## M19 — Mini Inference Runtime
+## M20 — Mini Inference Runtime
 
 **Build**
 
@@ -605,21 +630,21 @@ Out of scope: tensor parallelism, pipeline parallelism, MoE, distributed serving
 
 These are not needed to understand SGLang's design. Each one goes deeper into a single topic and can be done after the milestone it depends on.
 
-**Custom RMSNorm kernel** (after M10). Replace one operator with a hand-written kernel: Metal on Apple via `torch.mps.compile_shader`, Triton on NVIDIA. Validate against the PyTorch version and benchmark it. Learn the path from operator to kernel, and why a fused kernel beats a chain of PyTorch ops.
+**Custom RMSNorm kernel** (after M11). Replace one operator with a hand-written kernel: Metal on Apple via `torch.mps.compile_shader`, Triton on NVIDIA. Validate against the PyTorch version and benchmark it. Learn the path from operator to kernel, and why a fused kernel beats a chain of PyTorch ops.
 
-**Triton attention backend** (after M14). A second `AttentionBackend` whose decode kernel reads K/V directly through `kv_indices`, without the gather step. Compare with `layers/attention/triton_backend.py`.
+**Triton attention backend** (after M15). A second `AttentionBackend` whose decode kernel reads K/V directly through `kv_indices`, without the gather step. Compare with `layers/attention/triton_backend.py`.
 
-**Blocks larger than one token** (after M16). Make the slot size a `page_size` setting and support 16 tokens per block. Learn what gets harder: partially filled blocks, and prefix matching that must align to block boundaries.
+**Blocks larger than one token** (after M17). Make the slot size a `page_size` setting and support 16 tokens per block. Learn what gets harder: partially filled blocks, and prefix matching that must align to block boundaries.
 
-**CUDA graphs** (after M18, NVIDIA only). Capture decode steps for a fixed set of batch sizes and replay them. For a 0.6B model, decode time is mostly kernel launch overhead, so this is one of the largest speedups. Compare with `model_executor/runner/base_cuda_graph_runner.py`.
+**CUDA graphs** (after M19, NVIDIA only). Capture decode steps for a fixed set of batch sizes and replay them. For a 0.6B model, decode time is mostly kernel launch overhead, so this is one of the largest speedups. Compare with `model_executor/runner/base_cuda_graph_runner.py`.
 
-**Process split + streaming** (after M9). Move tokenization and detokenization out of the scheduler loop into separate processes, add an HTTP API, and stream tokens with incremental detokenization. Compare with `managers/tokenizer_manager.py` and `managers/detokenizer_manager.py`.
+**Process split + streaming** (after M10). Starting from the M3 HTTP server, move tokenization and detokenization out of the scheduler loop into separate processes, and stream tokens with incremental detokenization. Compare with `managers/tokenizer_manager.py` and `managers/detokenizer_manager.py`.
 
 ## Credits
 
 This roadmap draws on the following projects and courses:
 
-- [tiny-llm](https://skyzh.github.io/tiny-llm/) ([GitHub](https://github.com/skyzh/tiny-llm)) by skyzh: a course on building an LLM serving system with MLX on Apple Silicon. Its Week 1 is the reference for M10.
+- [tiny-llm](https://skyzh.github.io/tiny-llm/) ([GitHub](https://github.com/skyzh/tiny-llm)) by skyzh: a course on building an LLM serving system with MLX on Apple Silicon. Its Week 1 is the reference for M11.
 - [mini-sglang](https://github.com/sgl-project/mini-sglang) by the SGLang team: a compact implementation of SGLang, useful for comparing each milestone against the real design.
 - [nano-vllm](https://github.com/GeeeekExplorer/nano-vllm): a minimal vLLM-style inference engine in about 1,200 lines of Python.
 - [CMU LLM Systems](https://llmsystem.github.io/) (11-868, [course notes on csdiy.wiki](https://csdiy.wiki/en/%E6%B7%B1%E5%BA%A6%E7%94%9F%E6%88%90%E6%A8%A1%E5%9E%8B/%E5%A4%A7%E8%AF%AD%E8%A8%80%E6%A8%A1%E5%9E%8B/CMU11-868/)): a graduate course on the full LLM systems stack, from GPU acceleration to distributed training and serving.
