@@ -62,8 +62,6 @@ Custom kernels (Metal on Apple, Triton on NVIDIA) are optional and live in [Opti
 | M18 | The CPU and GPU keep waiting on each other | Overlap scheduling |
 | M19 | — | Mini inference runtime |
 
----
-
 ## M1 — Minimal Qwen3
 
 **Build**
@@ -96,8 +94,6 @@ Out of scope: KV cache, batching, scheduling, HTTP, sampling, profiling, `model.
 - What `input_ids` and logits are, and how next-token prediction works.
 - How autoregressive generation is built on top of a single forward pass.
 
----
-
 ## M2 — Single Request Runtime
 
 **Build**
@@ -114,8 +110,6 @@ Out of scope: queues, scheduling, batching, caching.
 
 - Serving a model is different from calling a model.
 - Request lifecycle, runtime state, capacity, and admission.
-
----
 
 ## M3 — Scheduler Loop
 
@@ -152,8 +146,6 @@ Out of scope: batching, KV cache, advanced scheduling policies.
 
 **Compare with SGLang**: `event_loop_normal()` in `managers/scheduler.py`.
 
----
-
 ## M4 — Runtime Layer Separation
 
 **Build**
@@ -176,8 +168,6 @@ Engine
 - This is the basic shape of SGLang and vLLM.
 
 **Compare with SGLang**: `model_executor/model_runner.py` (`ModelRunner.sample()`), `layers/sampler.py`.
-
----
 
 ## M5 — Request State Machine
 
@@ -203,8 +193,6 @@ Out of scope: batching, KV cache.
 
 **Compare with SGLang**: `Req` and the `FINISH_*` classes in `managers/schedule_batch.py`.
 
----
-
 ## M6 — Static Batching
 
 **Build**
@@ -221,8 +209,6 @@ Out of scope: continuous batching, KV cache.
 
 - Why GPU throughput depends on batching.
 - How to handle mismatched sequence lengths with padding, masks, and a batch dimension.
-
----
 
 ## M7 — Continuous Batching
 
@@ -248,8 +234,6 @@ Out of scope: KV cache.
 
 **Compare with SGLang**: `filter_batch()` and `merge_batch()` in `managers/schedule_batch.py`.
 
----
-
 ## M8 — Per-Request Sampling
 
 **Build**
@@ -270,8 +254,6 @@ Out of scope: repetition penalties, logit bias, constrained or grammar-based dec
 - How temperature, top-k, and top-p reshape the probability distribution.
 
 **Compare with SGLang**: `sampling/sampling_params.py`, `sampling/sampling_batch_info.py`.
-
----
 
 ## M9 — Profiling & Observability
 
@@ -306,8 +288,6 @@ compute amplification = processed_tokens / generated_tokens
 
 - The core engineering loop: measure → understand → optimize → measure again.
 - CPU wall-clock latency is not GPU execution time; asynchronous GPU execution must be synchronized before timing.
-
----
 
 ## M10 — Own Model + Packed Tokens
 
@@ -356,8 +336,6 @@ Out of scope: KV cache, custom kernels, a second model architecture (see M15).
 
 Reference: [tiny-llm](https://skyzh.github.io/tiny-llm/) Week 1 builds the same Qwen3 pieces step by step.
 
----
-
 ## M11 — KV Cache + ForwardMode
 
 **Build**
@@ -385,8 +363,6 @@ Out of scope: memory pools, prefix sharing, mixing extend and decode in one batc
 
 **Compare with SGLang**: `ForwardMode` in `model_executor/forward_batch_info.py`, `get_next_batch_to_run()` in `managers/scheduler.py`.
 
----
-
 ## M12 — ScheduleBatch / ForwardBatch
 
 **Build**
@@ -413,8 +389,6 @@ No new optimization behavior.
 
 **Compare with SGLang**: `ScheduleBatch` in `managers/schedule_batch.py`, `ForwardBatch` in `model_executor/forward_batch_info.py`, and the `ForwardBatch.init_new()` call in `managers/tp_worker.py`.
 
----
-
 ## M13 — AttentionBackend
 
 **Build**
@@ -437,8 +411,6 @@ Out of scope: more than one backend, custom kernels.
 - Which parts are model-specific (embedding, norm, MLP, position encoding) and which parts the runtime owns (attention over cached K/V).
 
 **Compare with SGLang**: `layers/radix_attention.py` (the model-side layer), `layers/attention/base_attn_backend.py` (`forward`, `forward_extend`, `forward_decode`).
-
----
 
 ## M14 — Token KV Pool + Admission + Retract
 
@@ -478,8 +450,6 @@ Out of scope: blocks larger than one token (see Optional Milestones), prefix sha
 
 **Compare with SGLang**: `ReqToTokenPool` and `MHATokenToKVPool` in `mem_cache/memory_pool.py` (`ReqToTokenPool` is the tensor form of every request's `kv_indices`), `TokenToKVPoolAllocator` in `mem_cache/allocator/token.py`, `prepare_for_extend()`, `prepare_for_decode()`, and `retract_decode()` in `managers/schedule_batch.py`, and `PrefillAdder` in `managers/schedule_policy.py`.
 
----
-
 ## M15 — Second Model: GPT-2
 
 **Build**
@@ -501,8 +471,6 @@ Out of scope: running both models in one engine at the same time.
 - Where the model boundary actually sits, tested by a real second model instead of assumed.
 - A different position encoding and attention layout only change the model code and `ModelConfig`.
 - Model limits such as maximum context length are runtime concerns, because admission depends on them.
-
----
 
 ## M16 — Radix Cache + Schedule Policy
 
@@ -544,8 +512,6 @@ Out of scope: hash-based block prefix caching (vLLM's approach), cache offloadin
 
 **Compare with SGLang**: `mem_cache/radix_cache.py` (`match_prefix`, `insert`, `evict`, `inc_lock_ref`), `SchedulePolicy` in `managers/schedule_policy.py`.
 
----
-
 ## M17 — Chunked Prefill
 
 **Build**
@@ -568,8 +534,6 @@ chunk 1 → decode step → chunk 2 → decode step → chunk 3
 - Why a token budget per step, not a request count, is what the scheduler really controls.
 
 **Compare with SGLang**: `chunked_req` in `managers/scheduler.py`, the chunk budget in `PrefillAdder` (`managers/schedule_policy.py`). SGLang's interleaving rule is more complex than the one used here.
-
----
 
 ## M18 — Overlap Scheduling
 
@@ -596,8 +560,6 @@ GPU executes step N  ║  CPU prepares step N+1
 - How much scheduling overhead costs when it is not hidden.
 
 **Compare with SGLang**: `event_loop_overlap()` in `managers/scheduler.py`, `FutureMap` in `managers/overlap_utils.py`, which generalizes "use the output tensor as the next input".
-
----
 
 ## M19 — Mini Inference Runtime
 
@@ -639,8 +601,6 @@ Out of scope: tensor parallelism, pipeline parallelism, MoE, distributed serving
 - How every layer of a modern inference engine fits together, and why each one exists.
 - The SGLang scheduler, model runner, and KV cache code should now read as optimized versions of these components.
 
----
-
 ## Optional Milestones
 
 These are not needed to understand SGLang's design. Each one goes deeper into a single topic and can be done after the milestone it depends on.
@@ -654,8 +614,6 @@ These are not needed to understand SGLang's design. Each one goes deeper into a 
 **CUDA graphs** (after M18, NVIDIA only). Capture decode steps for a fixed set of batch sizes and replay them. For a 0.6B model, decode time is mostly kernel launch overhead, so this is one of the largest speedups. Compare with `model_executor/runner/base_cuda_graph_runner.py`.
 
 **Process split + streaming** (after M9). Move tokenization and detokenization out of the scheduler loop into separate processes, add an HTTP API, and stream tokens with incremental detokenization. Compare with `managers/tokenizer_manager.py` and `managers/detokenizer_manager.py`.
-
----
 
 ## Credits
 
