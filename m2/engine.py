@@ -87,10 +87,8 @@ class Engine:
         # Per-request sampling settings arrive in M9.
         # No KV cache: recompute the full sequence every step, like M1. The cache arrives in M12.
         input_ids = torch.tensor([req.input_ids], device=self.device)
-        generated = self.model.generate(
-            input_ids, max_new_tokens=req.max_new_tokens, do_sample=True, use_cache=False
-        )
-        req.output_ids = generated[0, len(req.input_ids):].tolist()
+        generated = self.model.generate(input_ids, max_new_tokens=req.max_new_tokens, do_sample=True, use_cache=False)
+        req.output_ids = generated[0, len(req.input_ids) :].tolist()
 
         # generate() stops at EOS or at max_new_tokens; the last token tells which.
         req.finish_reason = "stop" if req.output_ids[-1] in self.eos_token_ids else "length"

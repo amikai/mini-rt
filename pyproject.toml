@@ -8,12 +8,44 @@ authors = [
 ]
 requires-python = ">=3.11"
 dependencies = [
-    "torch>=2.14.0",
     "transformers>=5.17.0",
 ]
+
+[project.optional-dependencies]
+# Pick one: `uv sync --extra cpu` (CI, Apple Silicon MPS) or `uv sync --extra cu130` (NVIDIA).
+cpu = ["torch>=2.14.0"]
+cu130 = ["torch>=2.14.0"]
 
 [dependency-groups]
 dev = [
     "ipywidgets>=8.1.9",
     "jupyterlab>=4.6.4",
+    "pytest>=9.1.1",
+    "ruff>=0.16.9",
 ]
+
+[tool.uv]
+conflicts = [[{ extra = "cpu" }, { extra = "cu130" }]]
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu", extra = "cpu" },
+    { index = "pytorch-cu130", extra = "cu130" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[tool.ruff]
+line-length = 120
+# Each milestone dir is a source root, so its modules sort as first-party imports.
+src = ["m*"]
+# Notebooks and docs are learning notes; lint and format only .py files.
+extend-exclude = ["*.ipynb", "*.md"]

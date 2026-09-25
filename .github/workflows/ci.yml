@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["**.md"]
+  pull_request:
+    paths-ignore: ["**.md"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          enable-cache: true
+      - run: uv sync --locked --extra cpu
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+
+  test:
+    # CPU only; see docs/adr/0001-ci-verifies-cpu-path-only.md.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Each milestone runs in its own pytest process: m2, m3, ... may reuse module names like `engine`.
+        milestone: [m2]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          enable-cache: true
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/huggingface
+          key: hf-qwen3-0.6b-tokenizer
+      - run: uv sync --locked --extra cpu
+      - run: uv run pytest -v
+        working-directory: ${{ matrix.milestone }}
