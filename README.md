@@ -726,6 +726,8 @@ These are not needed to understand SGLang's design. Each one goes deeper into a 
 
 **CUDA graphs** (after M19, NVIDIA only). Capture decode steps for a fixed set of batch sizes and replay them. For a 0.6B model, decode time is mostly kernel launch overhead, so this is one of the largest speedups. Compare with `model_executor/runner/base_cuda_graph_runner.py`.
 
+**Multi-LoRA serving** (after M17). Serve many LoRA adapters of Qwen3-0.6B on one shared base model. A request's `lora_path` becomes `Req.lora_id`. A `LoRAMemoryPool` holds `max_loras_per_batch` adapter slots, and admission limits the distinct adapters per batch. Each target linear layer runs `W x` on all packed tokens, then adds `scaling · B_i (A_i x)` in a per-request loop, like `TorchNativeBackend`. The radix cache key includes `lora_id`, because a different adapter gives different K/V for the same tokens. Validate against a Hugging Face `PeftModel`. Compare with `lora/lora_manager.py`, `lora/mem_pool.py`, `lora/layers.py`, `lora/backend/torch_backend.py`, and the `lora_id` added to `extra_key` in `Req.__init__` (`managers/schedule_batch.py`).
+
 **Process split + streaming** (after M10). Starting from the M3 HTTP server, move tokenization and detokenization out of the scheduler loop into separate processes, and stream tokens with incremental detokenization. Compare with `managers/tokenizer_manager.py` and `managers/detokenizer_manager.py`.
 
 ## Credits
