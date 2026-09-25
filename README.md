@@ -44,7 +44,7 @@ Every milestone must run on both Apple Silicon (PyTorch MPS) and NVIDIA GPUs (Py
 |-----------|----------|--------|------|
 | M1 | How does a model generate tokens? | Autoregressive loop | ✅ |
 | M2 | How do I turn it into a service? | Request + Engine | ✅ |
-| M3 | How do clients reach the engine? | Minimal HTTP server |  |
+| M3 | How do clients reach the engine? | Minimal HTTP server | ✅ |
 | M4 | What if many requests arrive at once? | Scheduler loop |  |
 | M5 | Who is responsible for what? | Layer separation |  |
 | M6 | What is a request over time? | State machine |  |
