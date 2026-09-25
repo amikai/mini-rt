@@ -601,6 +601,7 @@ GPU executes step N  ║  CPU prepares step N+1
 
 Replace one PyTorch operator with a hand-written kernel on each platform.
 
+- Start from the M10 profile: confirm RMSNorm's share of forward time before writing any kernel
 - A `BaseFusedOp` base class with `forward_native`, `forward_triton`, and `forward_mps`. `forward()` picks one once, on first call: `forward_triton` on NVIDIA, `forward_mps` on Apple, otherwise `forward_native`.
 - `RMSNorm` becomes a `BaseFusedOp`. `forward_native` is the existing PyTorch code.
 - **Apple**: a Metal kernel, compiled and loaded with `torch.mps.compile_shader`
@@ -608,14 +609,16 @@ Replace one PyTorch operator with a hand-written kernel on each platform.
 - A second version that fuses the residual add into the norm, like SGLang's `fused_add_rmsnorm`
 - Validate each kernel against `forward_native` on random inputs and on real activations, within a stated tolerance
 - Benchmark the op alone and end-to-end tokens/s, with and without the kernel
+- **Apple experiment**: run the same RMSNorm with MLX inside the PyTorch model. Hand the tensor over through DLPack if MLX accepts it without a copy, otherwise through NumPy. Time the op together with both conversions and any synchronization they force, and compare with the Metal kernel.
 
-Out of scope: kernels for other layers, autotuning.
+Out of scope: kernels for other layers, autotuning, an MLX path in `BaseFusedOp`.
 
 **Learn**
 
 - The path from operator to kernel: threads, threadgroups (Metal) or program IDs (Triton), memory loads, and a parallel reduction.
 - Why a fused kernel beats a chain of PyTorch ops: fewer launches and fewer round trips to device memory.
 - How one layer interface hides several platform implementations.
+- Why Metal, not MLX, is the Apple counterpart of Triton. Triton and `torch.mps.compile_shader` kernels read PyTorch tensors in place, so one op can change alone. MLX is a separate framework with its own arrays and command queue, so replacing one op adds conversion and synchronization at each call. Once that cost is larger than the kernel savings, MLX only pays off as a whole replacement below `ModelRunner`.
 
 **Compare with SGLang**: `BaseFusedOp` in `python/sglang/kernels/fused_op.py` (outside `srt/`; its docstring lists the full dispatch priority), `RMSNorm` in `layers/layernorm.py`. SGLang separates kernel backends such as `forward_triton` from platform paths such as `forward_cuda`, and has no Apple platform; `forward_mps` here plays the role of its `forward_<dispatch_key>` for out-of-tree platforms. Its prebuilt CUDA kernels come from the separate `sglang-kernel` package, imported as `sgl_kernel`.
 
