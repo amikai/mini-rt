@@ -500,6 +500,12 @@ Out of scope: running both models in one engine at the same time.
 - A different position encoding and attention layout only change the model code and `ModelConfig`.
 - Model limits such as maximum context length are runtime concerns, because admission depends on them.
 
+**Compare with SGLang**: `models/gpt2.py` and `models/registry.py`. SGLang keys the registry by the Hugging Face `architectures` name, and each model file ends with `EntryClass`.
+
+**Practice: add a new model to SGLang**
+
+Add native SGLang support for [Pythia-160M](https://huggingface.co/EleutherAI/pythia-160m) (`GPTNeoXForCausalLM`), which SGLang can only serve today through the Transformers fallback. It is close to GPT-2 but adds partial rotary, parallel residual, and an interleaved fused QKV weight.
+
 ## M17 — Radix Cache + Schedule Policy
 
 **Build**
