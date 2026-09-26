@@ -78,15 +78,15 @@ class Req:
     def finished(self) -> bool:
         return self.finished_reason is not None
 
-    def set_status(self, new: ReqStatus) -> None:
-        # TODO(M6-1): move to `new` only if _TRANSITIONS allows it from self.status.
-        # Illegal move: raise RuntimeError naming both states.
-        raise NotImplementedError
+    def set_status(self, nxt_status: ReqStatus) -> None:
+        if nxt_status not in _TRANSITIONS[self.status]:
+            raise RuntimeError(f"illegal transition {self.status} -> {nxt_status}")
+        self.status = nxt_status
 
     def update_finish_state(self) -> None:
         """Called after each new token. Sets finished_reason if the request should stop."""
-        # TODO(M6-2): look at the last token in output_ids.
-        # 1. In eos_token_ids: FINISH_MATCHED_TOKEN. Checked first, so EOS on the last allowed step is "stop".
-        # 2. Else output_ids reached max_new_tokens: FINISH_LENGTH.
-        # 3. Else leave finished_reason as None.
-        raise NotImplementedError
+        # EOS first, so EOS on the last allowed step is "stop", not "length".
+        if self.output_ids[-1] in self.eos_token_ids:
+            self.finished_reason = FINISH_MATCHED_TOKEN(self.output_ids[-1])
+        elif len(self.output_ids) >= self.max_new_tokens:
+            self.finished_reason = FINISH_LENGTH(self.max_new_tokens)

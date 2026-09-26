@@ -9,7 +9,7 @@ from typing import Protocol
 
 import torch
 
-from req import Req
+from req import FINISH_ERROR, Req, ReqStatus
 
 
 class ModelRunnerLike(Protocol):
@@ -56,8 +56,11 @@ class Scheduler:
             self.waiting_queue.append(self.recv_queue.get())
 
     def get_next_batch_to_run(self) -> Req | None:
-        # TODO(M6-3): same as M5, plus the WAITING -> RUNNING transition when a request starts.
-        raise NotImplementedError
+        # Capacity is one: keep the running request, else start the oldest waiting one.
+        if self.running_req is None and self.waiting_queue:
+            self.running_req = self.waiting_queue.popleft()
+            self.running_req.set_status(ReqStatus.RUNNING)
+        return self.running_req
 
     def run_batch(self, batch: Req) -> int:
         logits = self.model_runner.forward(batch)
@@ -65,9 +68,16 @@ class Scheduler:
         return next_token_id
 
     def process_batch_result(self, batch: Req, result: int | Exception) -> None:
-        # TODO(M6-4): result is the new token, or the exception run_batch raised.
-        # 1. Exception: FINISH_ERROR, then RUNNING -> FAILED.
-        # 2. Token: append it and let the request update its finish state.
-        #    Not finished: return and keep running_req. Finished: RUNNING -> FINISHED.
-        # 3. Ended either way: clear running_req, then set batch.done last.
-        raise NotImplementedError
+        # result is the new token, or the exception run_batch raised.
+        if isinstance(result, Exception):
+            batch.finished_reason = FINISH_ERROR(result)
+            batch.set_status(ReqStatus.FAILED)
+        else:
+            batch.output_ids.append(result)
+            batch.update_finish_state()
+            if not batch.finished():
+                return
+            batch.set_status(ReqStatus.FINISHED)
+        self.running_req = None
+        # Last: the handler may read batch as soon as done is set.
+        batch.done.set()
