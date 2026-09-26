@@ -13,7 +13,7 @@ from engine import Engine
 
 
 class SamplingParams(BaseModel):
-    """How to generate. Only max_new_tokens for now; temperature etc. arrive in M9."""
+    """How to generate. Only max_new_tokens for now; temperature etc. come later."""
 
     max_new_tokens: int = 32  # upper bound on generated tokens; EOS may stop earlier
 

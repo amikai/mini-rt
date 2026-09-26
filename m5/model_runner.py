@@ -32,10 +32,10 @@ class ModelRunner:
     @torch.inference_mode()
     def forward(self, req: Req) -> torch.Tensor:
         """Recompute the full sequence (no KV cache) and return logits for the last position: [vocab_size]."""
-        # TODO(M5-2): build a [1, seq_len] tensor on self.device from prompt + generated tokens,
-        # run self.model, and return logits of the last position only.
-        raise NotImplementedError
+        input_ids = torch.tensor([req.input_ids + req.output_ids], device=self.device)
+        outputs = self.model(input_ids, use_cache=False)
+        return outputs.logits[0, -1]
 
     def sample(self, logits: torch.Tensor, req: Req) -> int:
-        # req is unused until M9 gives each request its own sampling params.
+        # req is unused for now; per-request sampling params come later.
         return self.sampler(logits)

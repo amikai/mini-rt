@@ -35,6 +35,7 @@ class Scheduler:
 
     def event_loop(self) -> None:
         """Runs forever in the scheduler thread."""
+        # Each iteration predicts exactly one token for the running request.
         while True:
             self.recv_requests()
             batch = self.get_next_batch_to_run()
@@ -57,17 +58,26 @@ class Scheduler:
             self.waiting_queue.append(self.recv_queue.get())
 
     def get_next_batch_to_run(self) -> Req | None:
-        # TODO(M5-3): capacity is one. A request now spans many iterations:
-        # keep the running request, or start the oldest waiting one. None if nothing to run.
-        raise NotImplementedError
+        # Capacity is one: keep the running request, else start the oldest waiting one.
+        if self.running_req is None and self.waiting_queue:
+            self.running_req = self.waiting_queue.popleft()
+        return self.running_req
 
     def run_batch(self, batch: Req) -> int:
-        # TODO(M5-4): one decode step via self.model_runner. Return the next token id.
-        raise NotImplementedError
+        logits = self.model_runner.forward(batch)
+        next_token_id = self.model_runner.sample(logits, batch)
+        return next_token_id
 
     def process_batch_result(self, batch: Req, result: int | None) -> None:
-        # TODO(M5-5): result is the new token, or None if run_batch raised (batch.error is set).
-        # 1. Append the token; set finish_reason "stop" (EOS) or "length" (max_new_tokens).
-        # 2. Still generating: return and keep running_req.
-        # 3. Finished or failed: clear running_req, then set batch.done last.
-        raise NotImplementedError
+        # result is None if run_batch raised (batch.error is set).
+        if result is not None:
+            batch.output_ids.append(result)
+            if result in self.eos_token_ids:
+                batch.finish_reason = "stop"
+            elif len(batch.output_ids) >= batch.max_new_tokens:
+                batch.finish_reason = "length"
+            else:
+                return
+        self.running_req = None
+        # Last: the handler may read batch as soon as done is set.
+        batch.done.set()
