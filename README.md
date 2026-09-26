@@ -46,7 +46,7 @@ Every milestone must run on both Apple Silicon (PyTorch MPS) and NVIDIA GPUs (Py
 | M2 | How do I turn it into a service? | Request + Engine | ✅ |
 | M3 | How do clients reach the engine? | Minimal HTTP server | ✅ |
 | M4 | What if many requests arrive at once? | Scheduler loop | ✅ |
-| M5 | Who is responsible for what? | Layer separation |  |
+| M5 | Who is responsible for what? | Layer separation | ✅ |
 | M6 | What is a request over time? | State machine |  |
 | M7 | The client sees nothing until the whole answer is done | Streaming + abort |  |
 | M8 | Running one request at a time wastes the GPU | Static batching |  |
