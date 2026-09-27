@@ -49,7 +49,7 @@ Every milestone must run on both Apple Silicon (PyTorch MPS) and NVIDIA GPUs (Py
 | M5 | Who is responsible for what? | Layer separation | ✅ |
 | M6 | What is a request over time? | State machine | ✅ |
 | M7 | The client sees nothing until the whole answer is done | Streaming + abort | ✅ |
-| M8 | Running one request at a time wastes the GPU | Static batching |  |
+| M8 | Running one request at a time wastes the GPU | Static batching | ✅ |
 | M9 | Some requests in a batch finish early | Continuous batching |  |
 | M10 | Each request wants different sampling settings | Per-request sampling |  |
 | M11 | Where is the time actually going? | Profiling |  |
@@ -256,9 +256,12 @@ Out of scope: separate tokenizer and detokenizer processes (see Optional Milesto
 
 Serve many requests with one model forward pass.
 
-- `get_next_batch_to_run()` picks up to `max_batch_size` waiting requests
-- Padded batch tensor with attention masks for different sequence lengths (the Hugging Face model needs this layout)
+- `get_next_batch_to_run()` picks up to `max_batch_size` waiting requests into `running_batch`, oldest first
+- `ModelRunner.forward()` takes a list of requests and returns one row of logits per request. `Sampler` returns one token per row.
+- Padded batch tensor for different sequence lengths (the Hugging Face model needs this layout): left padding, so every last token sits in the last column; `attention_mask` hides the padding; `position_ids` count from each request's first real token
 - A batch stays together until every request in it finishes; empty slots are not refilled
+- One failed forward pass fails every request in its batch
+- Output is token-identical to running each request alone
 
 Out of scope: continuous batching, KV cache.
 
@@ -266,6 +269,9 @@ Out of scope: continuous batching, KV cache.
 
 - Why GPU throughput depends on batching.
 - How to handle mismatched sequence lengths with padding, masks, and a batch dimension.
+- What `attention_mask` and `position_ids` each fix. Without the mask, real tokens attend to padding. `position_ids` keep each row identical to running it alone; RoPE only sees distances between tokens, so a shifted row differs only by rounding, but a model with absolute position embeddings (GPT-2) needs the right positions.
+
+**Compare with SGLang**: `get_new_batch_prefill()` and `get_num_allocatable_reqs()` in `managers/scheduler.py` (the `--max-running-requests` cap). SGLang does not pad: it packs tokens and finds each request's last token with `last_index` in `layers/logits_processor.py`.
 
 ## M9 — Continuous Batching
 
