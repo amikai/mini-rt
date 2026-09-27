@@ -48,7 +48,7 @@ Every milestone must run on both Apple Silicon (PyTorch MPS) and NVIDIA GPUs (Py
 | M4 | What if many requests arrive at once? | Scheduler loop | ✅ |
 | M5 | Who is responsible for what? | Layer separation | ✅ |
 | M6 | What is a request over time? | State machine | ✅ |
-| M7 | The client sees nothing until the whole answer is done | Streaming + abort |  |
+| M7 | The client sees nothing until the whole answer is done | Streaming + abort | ✅ |
 | M8 | Running one request at a time wastes the GPU | Static batching |  |
 | M9 | Some requests in a batch finish early | Continuous batching |  |
 | M10 | Each request wants different sampling settings | Per-request sampling |  |
@@ -236,7 +236,7 @@ client ← data: [DONE]                 finished
 
 - `stream: true` on `/generate` returns Server-Sent Events: one `data: {...}` chunk per step, then `data: [DONE]`. Each chunk has the same fields as the non-stream response, and `text` holds everything decoded so far, as in SGLang's default.
 - Each `Req` gets an output queue. `process_batch_result()` puts the new token on it every step, and the handler reads the queue and yields chunks.
-- Incremental detokenization in the handler: a token can be half of a UTF-8 character, which is common in Chinese. Decode from an offset instead of token by token, and hold back text that ends in an incomplete character (`�`) until the next token completes it.
+- Incremental detokenization in the handler: a token can be half of a UTF-8 character, which is common in Chinese. Decode from an offset instead of token by token, and hold back text that ends in an incomplete character (U+FFFD, the replacement character) until the next token completes it.
 - Abort: when the client disconnects, the handler sends an `AbortReq` to the scheduler's inbox. The scheduler removes the request at its next step, whether it is waiting or running, with a new `ABORTED` status and `FINISH_ABORT` finish reason.
 - The non-stream path stays the same, and output is token-identical with and without streaming
 

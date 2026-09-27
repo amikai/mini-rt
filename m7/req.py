@@ -18,10 +18,9 @@ class ReqStatus(enum.Enum):
 
 
 # Legal moves only; anything else is a scheduler bug.
-# TODO(M7-1): a client can leave before or during generation. Add ABORTED to the sets it can be reached from.
 _TRANSITIONS: dict[ReqStatus, set[ReqStatus]] = {
-    ReqStatus.WAITING: {ReqStatus.RUNNING},
-    ReqStatus.RUNNING: {ReqStatus.FINISHED, ReqStatus.FAILED},
+    ReqStatus.WAITING: {ReqStatus.RUNNING, ReqStatus.ABORTED},
+    ReqStatus.RUNNING: {ReqStatus.FINISHED, ReqStatus.FAILED, ReqStatus.ABORTED},
     ReqStatus.FINISHED: set(),
     ReqStatus.FAILED: set(),
     ReqStatus.ABORTED: set(),

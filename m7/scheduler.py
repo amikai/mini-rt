@@ -9,7 +9,7 @@ from typing import Protocol
 
 import torch
 
-from req import AbortReq, Req, ReqStatus
+from req import FINISH_ABORT, FINISH_ERROR, AbortReq, Req, ReqStatus
 
 
 class ModelRunnerLike(Protocol):
@@ -63,10 +63,17 @@ class Scheduler:
             self.waiting_queue.append(recv_req)
 
     def abort_request(self, recv_req: AbortReq) -> None:
-        # TODO(M7-3): find recv_req.rid in waiting_queue (remove it) or in running_req.
-        # Not found: it already ended or never existed; do nothing.
-        # Found: FINISH_ABORT, tell the stream there is no token this time, then end it as ABORTED.
-        raise NotImplementedError
+        req = next((r for r in self.waiting_queue if r.rid == recv_req.rid), None)
+        if req is not None:
+            self.waiting_queue.remove(req)
+        elif self.running_req is not None and self.running_req.rid == recv_req.rid:
+            req = self.running_req  # end_req frees the running slot
+        else:
+            return  # already ended, or never existed
+        req.finished_reason = FINISH_ABORT()
+        # No token this time; the stream still needs to hear that it ended.
+        req.out_queue.put((None, req.finished_reason))
+        self.end_req(req, ReqStatus.ABORTED)
 
     def get_next_batch_to_run(self) -> Req | None:
         # Capacity is one: keep the running request, else start the oldest waiting one.
@@ -81,14 +88,24 @@ class Scheduler:
         return next_token_id
 
     def process_batch_result(self, batch: Req, result: int | Exception) -> None:
-        # TODO(M7-2): same as M6, plus one out_queue item per step, and end_req() for the ending.
-        # 1. Exception: FINISH_ERROR, put (None, reason), end as FAILED.
-        # 2. Token: append, update finish state, put (token, finished_reason). Finished: end as FINISHED.
-        #    Put after update_finish_state, so the last token carries its finish reason.
-        raise NotImplementedError
+        # result is the new token, or the exception run_batch raised.
+        if isinstance(result, Exception):
+            batch.finished_reason = FINISH_ERROR(result)
+            batch.out_queue.put((None, batch.finished_reason))
+            self.end_req(batch, ReqStatus.FAILED)
+            return
+        batch.output_ids.append(result)
+        batch.update_finish_state()
+        # After update_finish_state, so the last token carries its finish reason.
+        batch.out_queue.put((result, batch.finished_reason))
+        if batch.finished():
+            self.end_req(batch, ReqStatus.FINISHED)
 
     def end_req(self, req: Req, status: ReqStatus) -> None:
-        """Move req to a terminal status and release it. Caller sets finished_reason first."""
+        """Every ending goes through here: terminal status, free the running slot, wake the waiter.
+
+        Caller first sets finished_reason and puts the last out_queue item.
+        """
         req.set_status(status)
         if self.running_req is req:
             self.running_req = None

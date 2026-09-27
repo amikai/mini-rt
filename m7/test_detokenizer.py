@@ -4,7 +4,7 @@ from itertools import pairwise
 import pytest
 from transformers import AutoTokenizer
 
-from detokenizer import IncrementalDetokenizer
+from detokenizer import REPLACEMENT_CHAR, IncrementalDetokenizer
 
 
 @pytest.fixture(scope="module")
@@ -22,7 +22,7 @@ def test_split_character_is_the_case_under_test(tokenizer):
     # 龘 is two tokens; decoding only the first gives a replacement character.
     ids = tokenizer.encode("龘")
     assert len(ids) == 2
-    assert tokenizer.decode(ids[:1]) == "�"
+    assert tokenizer.decode(ids[:1]) == REPLACEMENT_CHAR
 
 
 def test_ascii_grows_token_by_token(tokenizer):
@@ -47,7 +47,7 @@ def test_flushes_half_character_when_finished(tokenizer):
 
     texts = stream(tokenizer, ids)
 
-    assert texts[-1] == tokenizer.decode(ids) == "好�"
+    assert texts[-1] == tokenizer.decode(ids) == "好" + REPLACEMENT_CHAR
 
 
 def test_special_tokens_are_skipped(tokenizer):
@@ -65,5 +65,30 @@ def test_random_ids_match_non_stream_decode(tokenizer):
 
         # Every chunk extends the previous one; nothing already sent is taken back.
         assert all(b.startswith(a) for a, b in pairwise(texts))
-        assert not any(t.endswith("�") for t in texts[:-1])
+        assert not any(t.endswith(REPLACEMENT_CHAR) for t in texts[:-1])
         assert texts[-1] == tokenizer.decode(ids, skip_special_tokens=True)
+
+
+@pytest.fixture(scope="module")
+def sentencepiece_tokenizer():
+    # Llama's SentencePiece tokenizer drops the leading "▁" (space) when a token is decoded first.
+    return AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
+
+
+def test_sentencepiece_needs_context_to_keep_spaces(sentencepiece_tokenizer):
+    tokenizer = sentencepiece_tokenizer
+    ids = tokenizer.encode("Hello world", add_special_tokens=False)
+    # The case under test: decoding the second token alone loses its space.
+    assert tokenizer.decode(ids[1:]) == "world"
+
+    assert stream(tokenizer, ids) == ["Hello", "Hello world"]
+
+
+@pytest.mark.parametrize("text", ["Hello world, how are you?", "龘 is rare"])
+def test_sentencepiece_matches_non_stream_decode(sentencepiece_tokenizer, text):
+    ids = sentencepiece_tokenizer.encode(text, add_special_tokens=False)
+
+    texts = stream(sentencepiece_tokenizer, ids)
+
+    assert all(b.startswith(a) for a, b in pairwise(texts))
+    assert texts[-1] == sentencepiece_tokenizer.decode(ids, skip_special_tokens=True) == text

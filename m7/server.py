@@ -4,6 +4,8 @@ One process: server, tokenizer, scheduler thread, and model live together.
 """
 
 import argparse
+import asyncio
+import json
 from collections.abc import AsyncIterator
 
 import uvicorn
@@ -12,8 +14,9 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
+from detokenizer import IncrementalDetokenizer
 from engine import Engine
-from req import BaseFinishReason, Req
+from req import FINISH_ERROR, BaseFinishReason, Req
 
 
 class SamplingParams(BaseModel):
@@ -69,16 +72,28 @@ def sse(data: str) -> str:
 
 
 async def stream_results(engine: Engine, req: Req) -> AsyncIterator[str]:
-    """Yields one chunk per step from req.out_queue, then [DONE]."""
-    # TODO(M7-5): loop over req.out_queue items and turn each into SSE messages.
-    # - Read with `await asyncio.to_thread(req.out_queue.get)`: the blocking get runs in a worker thread,
-    #   so a client disconnect can cancel the await.
-    # - Keep your own output_ids list and one IncrementalDetokenizer; req.output_ids may be ahead of what you read.
-    # - FINISH_ERROR: headers are already sent as 200, so yield sse({"error": {"message": ...}}), then [DONE].
-    # - Else: add the token (if any), decode, yield sse(make_response(...).model_dump_json()).
-    # - The request ended: yield [DONE] and stop.
-    raise NotImplementedError
-    yield  # makes this an async generator until the TODO is done
+    """Yields one chunk per step from req.out_queue, then [DONE].
+
+    SSE defines no end-of-stream message, so the end is `data: [DONE]`, as in OpenAI's API and SGLang.
+    """
+    detokenizer = IncrementalDetokenizer(engine.tokenizer)
+    # Our own copy; req.output_ids may already be ahead of what we have read.
+    output_ids: list[int] = []
+    while True:
+        # Blocking get in a worker thread, so a client disconnect can cancel this await.
+        token_id, finish_reason = await asyncio.to_thread(req.out_queue.get)
+        if isinstance(finish_reason, FINISH_ERROR):
+            # Headers are already sent as 200, so the error travels as a chunk, as in SGLang.
+            yield sse(json.dumps({"error": {"message": str(finish_reason.error)}}))
+            yield sse("[DONE]")
+            return
+        if token_id is not None:
+            output_ids.append(token_id)
+        text = detokenizer.decode(output_ids, finished=finish_reason is not None)
+        yield sse(make_response(req, text, output_ids, finish_reason).model_dump_json())
+        if finish_reason is not None:
+            yield sse("[DONE]")
+            return
 
 
 def create_app(engine: Engine) -> FastAPI:
@@ -96,10 +111,11 @@ def create_app(engine: Engine) -> FastAPI:
             raise HTTPException(status_code=400, detail=str(e)) from e
 
         if obj.stream:
-            # The background task runs after the stream ends, also on disconnect; aborting a finished request is a no-op.
+            # Starlette runs the stream next to a listener for http.disconnect; whichever ends first cancels the other.
             return StreamingResponse(
                 stream_results(engine, req),
                 media_type="text/event-stream",
+                # Runs after either ending. Aborting a request that already finished is a no-op.
                 background=BackgroundTask(engine.abort, req),
             )
         return make_response(req, engine.decode(req), req.output_ids, req.finished_reason)
