@@ -284,9 +284,10 @@ A B C  →  _ B C  →  D B C
 ```
 
 - Separate `waiting_queue` and `running_batch`
-- Every loop iteration re-decides what runs
-- Finished requests leave `running_batch` immediately
-- Padded tensors are rebuilt every step, and the full sequence is still recomputed
+- Every loop iteration re-decides what runs: `get_next_batch_to_run()` drops requests that ended last step, then `get_new_batch_prefill()` fills the free slots with the oldest waiting requests
+- Finished requests leave `running_batch` before the next forward pass, so their slot is refilled one step later instead of when the whole batch ends
+- An ended request stays in `running_batch` until that filter runs, so an abort that arrives in between must be ignored
+- Padded tensors are rebuilt every step, and the full sequence is still recomputed. A newcomer runs its whole prompt in the same forward pass as the requests already generating.
 
 Out of scope: KV cache.
 
@@ -295,7 +296,7 @@ Out of scope: KV cache.
 - Continuous batching is a scheduling problem, not a Transformer problem.
 - The scheduler's real job is to rebuild the workload on every step.
 
-**Compare with SGLang**: `filter_batch()` and `merge_batch()` in `managers/schedule_batch.py`.
+**Compare with SGLang**: `filter_batch()` and `merge_batch()` in `managers/schedule_batch.py`, `get_next_batch_to_run()` and `update_running_batch()` in `managers/scheduler.py`. SGLang runs new requests in their own prefill batch first and merges them into `running_batch` on the next step; without a KV cache, one mixed forward pass is simpler here.
 
 ## M10 — Per-Request Sampling
 
