@@ -11,7 +11,7 @@ from server import create_app
 
 @pytest.fixture(scope="session")
 def engine(tmp_path_factory):
-    # Tiny random Qwen3 with the real tokenizer, same as m2 tests.
+    # Tiny random Qwen3 with the real tokenizer, same as m02 tests.
     model_dir = tmp_path_factory.mktemp("tiny-qwen3")
     tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen3-0.6B")
     config = Qwen3Config(

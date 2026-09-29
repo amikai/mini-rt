@@ -32,8 +32,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Each milestone runs in its own pytest process: m2, m3, ... may reuse module names like `engine`.
-        milestone: [m2, m3, m4, m5, m6, m7, m8, m9]
+        # Each milestone runs in its own pytest process: m02, m03, ... may reuse module names like `engine`.
+        milestone: [m02, m03, m04, m05, m06, m07, m08, m09]
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.2.0

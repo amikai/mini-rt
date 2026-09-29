@@ -4,7 +4,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, Qwen3Config
 
 @pytest.fixture(scope="session")
 def tiny_model_dir(tmp_path_factory):
-    # Tiny random Qwen3 with the real tokenizer, same as m2-m4 tests.
+    # Tiny random Qwen3 with the real tokenizer, same as m02-m04 tests.
     model_dir = tmp_path_factory.mktemp("tiny-qwen3")
     tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen3-0.6B")
     config = Qwen3Config(
