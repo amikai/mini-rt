@@ -305,12 +305,13 @@ Out of scope: KV cache.
 
 Replace greedy-only decoding with sampling parameters that belong to each request.
 
-- `SamplingParams` on each `Req`: `temperature`, `top_k`, `top_p`, and an optional seed
-- `temperature = 0` means greedy, so M1–M9 behavior is still reachable
+- `SamplingParams` on each `Req`: `max_new_tokens`, `temperature`, `top_k`, `top_p`, and an optional `sampling_seed`. `POST /generate` takes them as a plain `sampling_params` dict, as SGLang does.
+- `temperature` defaults to 1.0, as in SGLang. `temperature = 0` means greedy, so M1–M9 behavior is still reachable. `SamplingParams` rewrites it as `top_k = 1`, so the `Sampler` needs no greedy special case.
 - The `Sampler` handles one batch where every row can have different parameters
-- Parameters are turned into per-row tensors, so sampling runs as batched tensor ops rather than a Python loop over requests
+- `SamplingBatchInfo` turns the parameters into per-row tensors, so sampling runs as batched tensor ops rather than a Python loop over requests. It is rebuilt every step, like the padded input tensors.
+- A seeded request draws its random numbers from its own seed and the position of the token, never from a shared RNG, so its output does not depend on which other requests share its batch
 
-Out of scope: repetition penalties, logit bias, constrained or grammar-based decoding.
+Out of scope: repetition penalties, logit bias, min-p, constrained or grammar-based decoding.
 
 **Learn**
 
@@ -318,7 +319,7 @@ Out of scope: repetition penalties, logit bias, constrained or grammar-based dec
 - Continuous batching mixes requests with different settings in the same batch, so the sampler must be batch-aware.
 - How temperature, top-k, and top-p reshape the probability distribution.
 
-**Compare with SGLang**: `sampling/sampling_params.py`, `sampling/sampling_batch_info.py`.
+**Compare with SGLang**: `sampling/sampling_params.py` (`__post_init__()`, `verify()`), `sampling/sampling_batch_info.py` (`from_schedule_batch()`), `layers/sampler.py` (`top_k_top_p_min_p_sampling_from_probs_torch()`, `sampling_from_probs_torch()`, `multinomial_with_seed()`). SGLang uses seeds only in deterministic-inference mode and hashes `(seed, position)` on the device instead of building one `torch.Generator` per row.
 
 ## M11 — Profiling & Observability
 
