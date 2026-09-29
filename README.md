@@ -26,11 +26,11 @@ Each milestone ends with a **Compare with SGLang** line that lists the SGLang fi
 
 ## Model
 
-The whole roadmap uses [Qwen3-0.6B](https://huggingface.co/Qwen/Qwen3-0.6B). It is small enough to run on a laptop, and its architecture matches the models SGLang serves in production: RoPE, grouped-query attention (GQA), RMSNorm, and a SwiGLU MLP. Using the same model from M1 onward means the tokenizer, EOS tokens, KV cache shape, and position handling never change underneath the runtime while it is being built. M17 then adds GPT-2 as a second model to test that the runtime does not depend on Qwen3.
+The whole roadmap uses [Qwen3-0.6B](https://huggingface.co/Qwen/Qwen3-0.6B). It is small enough to run on a laptop, and its architecture matches the models SGLang serves in production: RoPE, grouped-query attention (GQA), RMSNorm, and a SwiGLU MLP. Using the same model from M01 onward means the tokenizer, EOS tokens, KV cache shape, and position handling never change underneath the runtime while it is being built. M17 then adds GPT-2 as a second model to test that the runtime does not depend on Qwen3.
 
 ## Hardware
 
-Every milestone must run on both Apple Silicon (PyTorch MPS) and NVIDIA GPUs (PyTorch CUDA), selected by a single `device` setting. M1–M20 use only PyTorch operators, so the same code runs on both. The places where the platforms differ are small and explicit:
+Every milestone must run on both Apple Silicon (PyTorch MPS) and NVIDIA GPUs (PyTorch CUDA), selected by a single `device` setting. M01–M20 use only PyTorch operators, so the same code runs on both. The places where the platforms differ are small and explicit:
 
 - Device synchronization before reading a timer (M11)
 - The memory budget used to size the KV pool (M16)
@@ -42,15 +42,15 @@ Every milestone must run on both Apple Silicon (PyTorch MPS) and NVIDIA GPUs (Py
 
 | Milestone | Question | Answer | Done |
 |-----------|----------|--------|------|
-| M1 | How does a model generate tokens? | Autoregressive loop | ✅ |
-| M2 | How do I turn it into a service? | Request + Engine | ✅ |
-| M3 | How do clients reach the engine? | Minimal HTTP server | ✅ |
-| M4 | What if many requests arrive at once? | Scheduler loop | ✅ |
-| M5 | Who is responsible for what? | Layer separation | ✅ |
-| M6 | What is a request over time? | State machine | ✅ |
-| M7 | The client sees nothing until the whole answer is done | Streaming + abort | ✅ |
-| M8 | Running one request at a time wastes the GPU | Static batching | ✅ |
-| M9 | Some requests in a batch finish early | Continuous batching | ✅ |
+| M01 | How does a model generate tokens? | Autoregressive loop | ✅ |
+| M02 | How do I turn it into a service? | Request + Engine | ✅ |
+| M03 | How do clients reach the engine? | Minimal HTTP server | ✅ |
+| M04 | What if many requests arrive at once? | Scheduler loop | ✅ |
+| M05 | Who is responsible for what? | Layer separation | ✅ |
+| M06 | What is a request over time? | State machine | ✅ |
+| M07 | The client sees nothing until the whole answer is done | Streaming + abort | ✅ |
+| M08 | Running one request at a time wastes the GPU | Static batching | ✅ |
+| M09 | Some requests in a batch finish early | Continuous batching | ✅ |
 | M10 | Each request wants different sampling settings | Per-request sampling |  |
 | M11 | Where is the time actually going? | Profiling |  |
 | M12 | What does the model actually compute? | Own model + packed tokens |  |
@@ -67,7 +67,7 @@ Every milestone must run on both Apple Silicon (PyTorch MPS) and NVIDIA GPUs (Py
 | M23 | Prefill keeps interrupting decode | Prefill/decode disaggregation |  |
 | M24 | — | Mini inference runtime |  |
 
-## M1 — Minimal Qwen3
+## M01 — Minimal Qwen3
 
 **Build**
 
@@ -99,7 +99,7 @@ Out of scope: KV cache, batching, scheduling, HTTP, sampling, profiling, `model.
 - What `input_ids` and logits are, and how next-token prediction works.
 - How autoregressive generation is built on top of a single forward pass.
 
-## M2 — Single Request Runtime
+## M02 — Single Request Runtime
 
 **Build**
 
@@ -116,11 +116,11 @@ Out of scope: queues, scheduling, batching, caching.
 - Serving a model is different from calling a model.
 - Request lifecycle, runtime state, capacity, and admission.
 
-## M3 — Minimal HTTP Server
+## M03 — Minimal HTTP Server
 
 **Build**
 
-Put the M2 `Engine` behind the simplest possible HTTP server.
+Put the M02 `Engine` behind the simplest possible HTTP server.
 
 - A FastAPI app with one endpoint, `POST /generate`, using a subset of SGLang's native format
   - Request: `text`, `sampling_params.max_new_tokens`
@@ -129,7 +129,7 @@ Put the M2 `Engine` behind the simplest possible HTTP server.
 - If `Engine` is already running a request, return `503 Service Unavailable` immediately
 - One process: server, tokenizer, and model live together
 
-Out of scope: queues, streaming (see M7), OpenAI-compatible API, chat templates, separate processes.
+Out of scope: queues, streaming (see M07), OpenAI-compatible API, chat templates, separate processes.
 
 **Learn**
 
@@ -139,7 +139,7 @@ Out of scope: queues, streaming (see M7), OpenAI-compatible API, chat templates,
 
 **Compare with SGLang**: `/generate` in `entrypoints/http_server.py`, `GenerateReqInput` in `managers/io_struct.py`.
 
-## M4 — Scheduler Loop
+## M04 — Scheduler Loop
 
 **Build**
 
@@ -175,7 +175,7 @@ Out of scope: batching, KV cache, advanced scheduling policies.
 
 **Compare with SGLang**: `event_loop_normal()` in `managers/scheduler.py`.
 
-## M5 — Runtime Layer Separation
+## M05 — Runtime Layer Separation
 
 **Build**
 
@@ -189,7 +189,7 @@ Engine
 ```
 
 - No model logic in `Scheduler`, no queue logic in `ModelRunner`, no model knowledge in `Sampler`
-- Behavior stays identical to M4
+- Behavior stays identical to M04
 
 **Learn**
 
@@ -198,7 +198,7 @@ Engine
 
 **Compare with SGLang**: `model_executor/model_runner.py` (`ModelRunner.sample()`), `layers/sampler.py`.
 
-## M6 — Request State Machine
+## M06 — Request State Machine
 
 **Build**
 
@@ -222,7 +222,7 @@ Out of scope: batching, KV cache.
 
 **Compare with SGLang**: `Req` and the `FINISH_*` classes in `managers/schedule_batch.py`.
 
-## M7 — Streaming + Abort
+## M07 — Streaming + Abort
 
 **Build**
 
@@ -246,11 +246,11 @@ Out of scope: separate tokenizer and detokenizer processes (see Optional Milesto
 
 - When output reaches the client is separate from when it is generated. Streaming lowers time to first token (TTFT), not end-to-end latency.
 - Why detokenization must be incremental: tokens and characters do not line up.
-- Cancellation needs the request state machine from M6: abort is one more transition, and the scheduler must check it every step.
+- Cancellation needs the request state machine from M06: abort is one more transition, and the scheduler must check it every step.
 
 **Compare with SGLang**: `generate_request()` in `entrypoints/http_server.py` (SSE, and abort on disconnect), `stream_output()` in `managers/scheduler_components/output_streamer.py`, `surr_offset` and `read_offset` in `managers/detokenizer_manager.py`, `FINISH_ABORT` in `managers/schedule_batch.py`, and `AbortReq` in `managers/io_struct.py` with `abort_request()` in `managers/scheduler.py`. SGLang's `--incremental-streaming-output` sends only the new text in each chunk.
 
-## M8 — Static Batching
+## M08 — Static Batching
 
 **Build**
 
@@ -273,7 +273,7 @@ Out of scope: continuous batching, KV cache.
 
 **Compare with SGLang**: `get_new_batch_prefill()` and `get_num_allocatable_reqs()` in `managers/scheduler.py` (the `--max-running-requests` cap). SGLang does not pad: it packs tokens and finds each request's last token with `last_index` in `layers/logits_processor.py`.
 
-## M9 — Continuous Batching
+## M09 — Continuous Batching
 
 **Build**
 
@@ -306,7 +306,7 @@ Out of scope: KV cache.
 Replace greedy-only decoding with sampling parameters that belong to each request.
 
 - `SamplingParams` on each `Req`: `max_new_tokens`, `temperature`, `top_k`, `top_p`, and an optional `sampling_seed`. `POST /generate` takes them as a plain `sampling_params` dict, as SGLang does.
-- `temperature` defaults to 1.0, as in SGLang. `temperature = 0` means greedy, so M1–M9 behavior is still reachable. `SamplingParams` rewrites it as `top_k = 1`, so the `Sampler` needs no greedy special case.
+- `temperature` defaults to 1.0, as in SGLang. `temperature = 0` means greedy, so M01–M09 behavior is still reachable. `SamplingParams` rewrites it as `top_k = 1`, so the `Sampler` needs no greedy special case.
 - The `Sampler` handles one batch where every row can have different parameters
 - `SamplingBatchInfo` turns the parameters into per-row tensors, so sampling runs as batched tensor ops rather than a Python loop over requests. It is rebuilt every step, like the padded input tensors.
 - A seeded request draws its random numbers from its own seed and the position of the token, never from a shared RNG, so its output does not depend on which other requests share its batch
@@ -766,7 +766,7 @@ These are not needed to understand SGLang's design. Each one goes deeper into a 
 
 **Multi-LoRA serving** (after M18). Serve many LoRA adapters of Qwen3-0.6B on one shared base model. A request's `lora_path` becomes `Req.lora_id`. A `LoRAMemoryPool` holds `max_loras_per_batch` adapter slots, and admission limits the distinct adapters per batch. Each target linear layer runs `W x` on all packed tokens, then adds `scaling · B_i (A_i x)` in a per-request loop, like `TorchNativeBackend`. The radix cache key includes `lora_id`, because a different adapter gives different K/V for the same tokens. Validate against a Hugging Face `PeftModel`. Compare with `lora/lora_manager.py`, `lora/mem_pool.py`, `lora/layers.py`, `lora/backend/torch_backend.py`, and the `lora_id` added to `extra_key` in `Req.__init__` (`managers/schedule_batch.py`).
 
-**Process split** (after M11). Move tokenization and the M7 incremental detokenization out of the HTTP server and scheduler into separate processes, connected by queues. Use the M11 profile to measure what the split saves. Compare with `managers/tokenizer_manager.py` and `managers/detokenizer_manager.py`.
+**Process split** (after M11). Move tokenization and the M07 incremental detokenization out of the HTTP server and scheduler into separate processes, connected by queues. Use the M11 profile to measure what the split saves. Compare with `managers/tokenizer_manager.py` and `managers/detokenizer_manager.py`.
 
 ## Credits
 
