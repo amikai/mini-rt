@@ -1,4 +1,4 @@
-"""M5: ModelRunner owns the model, its device, and one forward step (tokens -> logits -> next token).
+"""M05: ModelRunner owns the model, its device, and one forward step (tokens -> logits -> next token).
 
 No queue or request-lifecycle logic here; the Scheduler decides who runs and when they finish.
 """

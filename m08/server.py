@@ -1,4 +1,4 @@
-"""M8: same HTTP server as M7. Concurrent requests now share forward passes inside the scheduler.
+"""M08: same HTTP server as M07. Concurrent requests now share forward passes inside the scheduler.
 
 One process: server, tokenizer, scheduler thread, and model live together.
 """

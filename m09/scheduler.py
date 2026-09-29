@@ -1,4 +1,4 @@
-"""M9: same loop as M8, but the batch is rebuilt every step.
+"""M09: same loop as M08, but the batch is rebuilt every step.
 
 Continuous batching: an ended request leaves running_batch before the next step, and a waiting request takes its slot.
 The scheduler drives status transitions; Req decides when it is finished.

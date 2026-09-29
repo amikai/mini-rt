@@ -8,7 +8,7 @@ Accepted
 
 ## Context
 
-Every milestone must run on Apple Silicon (PyTorch MPS) and NVIDIA GPUs (PyTorch CUDA), selected by a single `device` setting. M1–M19 use only PyTorch operators, so the same code also runs on CPU.
+Every milestone must run on Apple Silicon (PyTorch MPS) and NVIDIA GPUs (PyTorch CUDA), selected by a single `device` setting. M01–M19 use only PyTorch operators, so the same code also runs on CPU.
 
 We want CI on GitHub Actions to check each change. GitHub-hosted runners limit what CI can check:
 

@@ -1,4 +1,4 @@
-"""M4: same HTTP server as M3, but concurrent requests queue instead of getting 503.
+"""M04: same HTTP server as M03, but concurrent requests queue instead of getting 503.
 
 One process: server, tokenizer, scheduler thread, and model live together.
 """
@@ -13,7 +13,7 @@ from engine import Engine
 
 
 class SamplingParams(BaseModel):
-    """How to generate. Only max_new_tokens for now; temperature etc. arrive in M9."""
+    """How to generate. Only max_new_tokens for now; temperature etc. arrive in M09."""
 
     max_new_tokens: int = 32  # upper bound on generated tokens; EOS may stop earlier
 

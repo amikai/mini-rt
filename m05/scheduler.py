@@ -1,4 +1,4 @@
-"""M5: same loop as M4, but one iteration now produces one token instead of a whole request.
+"""M05: same loop as M04, but one iteration now produces one token instead of a whole request.
 
 The scheduler decides who runs and when a request finishes; ModelRunner does the compute.
 """

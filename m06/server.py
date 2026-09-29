@@ -1,4 +1,4 @@
-"""M6: same HTTP server as M5, but finish_reason is now an object, as in SGLang.
+"""M06: same HTTP server as M05, but finish_reason is now an object, as in SGLang.
 
 One process: server, tokenizer, scheduler thread, and model live together.
 """

@@ -1,4 +1,4 @@
-"""M5: same HTTP server as M4. Only the Engine internals changed.
+"""M05: same HTTP server as M04. Only the Engine internals changed.
 
 One process: server, tokenizer, scheduler thread, and model live together.
 """

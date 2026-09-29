@@ -16,7 +16,7 @@ class Sampler(nn.Module):
         Returns one token id per row.
         """
         # TODO(M10-3):
-        # 1. is_all_greedy: argmax, same as M9.
+        # 1. is_all_greedy: argmax, same as M09.
         # 2. Otherwise, in float32: divide by temperatures, then softmax into probs.
         # 3. apply_top_k_top_p, then sampling_from_probs_torch.
         # A greedy row needs no branch here: top_k 1 leaves one token to sample.

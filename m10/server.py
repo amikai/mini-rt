@@ -1,4 +1,4 @@
-"""M10: same HTTP server as M9. sampling_params now takes temperature, top_p, top_k, and sampling_seed.
+"""M10: same HTTP server as M09. sampling_params now takes temperature, top_p, top_k, and sampling_seed.
 
 One process: server, tokenizer, scheduler thread, and model live together.
 """

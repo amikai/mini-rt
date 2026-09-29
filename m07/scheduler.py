@@ -1,4 +1,4 @@
-"""M7: same loop as M6, plus two things per step: stream each new token out, and drop aborted requests.
+"""M07: same loop as M06, plus two things per step: stream each new token out, and drop aborted requests.
 
 The scheduler drives status transitions; Req decides when it is finished.
 """

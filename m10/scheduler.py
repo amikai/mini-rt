@@ -1,4 +1,4 @@
-"""M10: same loop as M9. Each request's SamplingParams travel with it into the batch.
+"""M10: same loop as M09. Each request's SamplingParams travel with it into the batch.
 
 Continuous batching: an ended request leaves running_batch before the next step, and a waiting request takes its slot.
 The scheduler drives status transitions; Req decides when it is finished.

@@ -1,4 +1,4 @@
-"""M9: same Req as M8. Requests now join and leave the running batch one by one.
+"""M09: same Req as M08. Requests now join and leave the running batch one by one.
 
 Why it finished is a finish reason object, named after SGLang's FINISH_* classes (managers/schedule_batch.py).
 """

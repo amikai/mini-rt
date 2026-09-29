@@ -1,6 +1,6 @@
-"""M3: minimal HTTP server.
+"""M03: minimal HTTP server.
 
-Put the M2 Engine behind `POST /generate`, using a subset of SGLang's native format.
+Put the M02 Engine behind `POST /generate`, using a subset of SGLang's native format.
 One process: server, tokenizer, and model live together.
 """
 
@@ -14,7 +14,7 @@ from engine import Engine, EngineBusyError
 
 
 class SamplingParams(BaseModel):
-    """How to generate. Only max_new_tokens for now; temperature etc. arrive in M9."""
+    """How to generate. Only max_new_tokens for now; temperature etc. arrive in M09."""
 
     max_new_tokens: int = 32  # upper bound on generated tokens; EOS may stop earlier
 

@@ -1,4 +1,4 @@
-"""M6: Req is a state machine. Status moves WAITING -> RUNNING -> FINISHED or FAILED.
+"""M06: Req is a state machine. Status moves WAITING -> RUNNING -> FINISHED or FAILED.
 
 Why it finished is a finish reason object, named after SGLang's FINISH_* classes (managers/schedule_batch.py).
 """

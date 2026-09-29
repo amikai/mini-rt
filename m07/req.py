@@ -1,4 +1,4 @@
-"""M7: Req gains an output queue for streaming, and abort is one more move in its state machine.
+"""M07: Req gains an output queue for streaming, and abort is one more move in its state machine.
 
 Why it finished is a finish reason object, named after SGLang's FINISH_* classes (managers/schedule_batch.py).
 """

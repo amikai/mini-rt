@@ -1,4 +1,4 @@
-"""M6 Engine: wires tokenizer, Scheduler, and ModelRunner together. No model or queue logic of its own.
+"""M06 Engine: wires tokenizer, Scheduler, and ModelRunner together. No model or queue logic of its own.
 
 Engine
   ├─ Scheduler       decides who runs

@@ -1,4 +1,4 @@
-"""M9: same HTTP server as M8. Requests now join a running batch as soon as a slot frees up.
+"""M09: same HTTP server as M08. Requests now join a running batch as soon as a slot frees up.
 
 One process: server, tokenizer, scheduler thread, and model live together.
 """

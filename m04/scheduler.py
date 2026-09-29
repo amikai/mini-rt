@@ -1,4 +1,4 @@
-"""M4: scheduler loop.
+"""M04: scheduler loop.
 
 Requests queue up instead of being rejected. One request runs at a time, in FIFO order.
 The scheduler decides who runs; it never touches the model directly.

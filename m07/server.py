@@ -1,4 +1,4 @@
-"""M7: same HTTP server as M6, plus `stream: true` for Server-Sent Events and abort on client disconnect.
+"""M07: same HTTP server as M06, plus `stream: true` for Server-Sent Events and abort on client disconnect.
 
 One process: server, tokenizer, scheduler thread, and model live together.
 """

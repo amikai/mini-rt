@@ -1,4 +1,4 @@
-"""M5: Sampler turns logits into the next token. Greedy only; per-request settings come later."""
+"""M05: Sampler turns logits into the next token. Greedy only; per-request settings come later."""
 
 import torch
 from torch import nn

@@ -1,7 +1,7 @@
-"""M2 Engine, copied unchanged so M3 stays self-contained.
+"""M02 Engine, copied unchanged so M03 stays self-contained.
 
 The Engine runs one request at a time and rejects new requests while busy.
-M3 only puts it behind HTTP; see server.py.
+M03 only puts it behind HTTP; see server.py.
 """
 
 import threading
@@ -82,10 +82,10 @@ class Engine:
     @torch.inference_mode()
     def _run(self, req: Req) -> None:
         # The model call is HF model.generate(); the runtime only wraps it with request state.
-        # generate() wraps M1's loop: forward -> last logits -> pick token -> append -> stop at EOS or max_new_tokens.
+        # generate() wraps M01's loop: forward -> last logits -> pick token -> append -> stop at EOS or max_new_tokens.
         # Sample with the model's defaults from generation_config (Qwen3: temperature 0.6, top_k 20, top_p 0.95).
-        # Per-request sampling settings arrive in M9.
-        # No KV cache: recompute the full sequence every step, like M1. The cache arrives in M12.
+        # Per-request sampling settings arrive in M09.
+        # No KV cache: recompute the full sequence every step, like M01. The cache arrives in M12.
         input_ids = torch.tensor([req.input_ids], device=self.device)
         generated = self.model.generate(input_ids, max_new_tokens=req.max_new_tokens, do_sample=True, use_cache=False)
         req.output_ids = generated[0, len(req.input_ids) :].tolist()

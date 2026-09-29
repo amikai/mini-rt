@@ -1,4 +1,4 @@
-"""M8: same Req as M7. The scheduler now runs many of them in one forward pass.
+"""M08: same Req as M07. The scheduler now runs many of them in one forward pass.
 
 Why it finished is a finish reason object, named after SGLang's FINISH_* classes (managers/schedule_batch.py).
 """

@@ -1,4 +1,4 @@
-"""M8: same loop as M7, but each step runs a batch of requests in one forward pass.
+"""M08: same loop as M07, but each step runs a batch of requests in one forward pass.
 
 Static batching: a new batch starts only after every request in the current one has ended.
 The scheduler drives status transitions; Req decides when it is finished.

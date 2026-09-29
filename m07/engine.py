@@ -1,4 +1,4 @@
-"""M7 Engine: wires tokenizer, Scheduler, and ModelRunner together. No model or queue logic of its own.
+"""M07 Engine: wires tokenizer, Scheduler, and ModelRunner together. No model or queue logic of its own.
 
 Engine
   ├─ Scheduler       decides who runs

@@ -1,4 +1,4 @@
-"""M9: same as M8. Turns a growing list of token ids into text without splitting a UTF-8 character.
+"""M09: same as M08. Turns a growing list of token ids into text without splitting a UTF-8 character.
 
 Offset names follow SGLang's DecodeStatus (managers/detokenizer_manager.py).
 """

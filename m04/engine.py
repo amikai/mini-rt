@@ -1,4 +1,4 @@
-"""M4 Engine: M3's Engine with the busy lock replaced by a scheduler thread.
+"""M04 Engine: M03's Engine with the busy lock replaced by a scheduler thread.
 
 generate() queues the request and blocks until the scheduler finishes it. No more EngineBusyError.
 """
@@ -58,7 +58,7 @@ class Engine:
 
     @torch.inference_mode()
     def _run(self, req: Req) -> None:
-        # Same model call as M3: HF generate(), model's default sampling, no KV cache.
+        # Same model call as M03: HF generate(), model's default sampling, no KV cache.
         input_ids = torch.tensor([req.input_ids], device=self.device)
         generated = self.model.generate(input_ids, max_new_tokens=req.max_new_tokens, do_sample=True, use_cache=False)
         req.output_ids = generated[0, len(req.input_ids) :].tolist()

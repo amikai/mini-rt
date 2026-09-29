@@ -1,4 +1,4 @@
-"""M9: ModelRunner owns the model, its device, and one forward step for a whole batch (tokens -> logits -> next tokens).
+"""M09: ModelRunner owns the model, its device, and one forward step for a whole batch (tokens -> logits -> next tokens).
 
 No queue or request-lifecycle logic here; the Scheduler decides who runs and when they finish.
 """

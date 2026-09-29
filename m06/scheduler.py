@@ -1,4 +1,4 @@
-"""M6: same loop as M5, but every change to a request goes through its state machine.
+"""M06: same loop as M05, but every change to a request goes through its state machine.
 
 The scheduler drives status transitions; Req decides when it is finished.
 """

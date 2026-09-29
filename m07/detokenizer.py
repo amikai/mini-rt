@@ -1,4 +1,4 @@
-"""M7: incremental detokenization. Turns a growing list of token ids into text without splitting a UTF-8 character.
+"""M07: incremental detokenization. Turns a growing list of token ids into text without splitting a UTF-8 character.
 
 Offset names follow SGLang's DecodeStatus (managers/detokenizer_manager.py).
 """
