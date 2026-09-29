@@ -50,7 +50,7 @@ Every milestone must run on both Apple Silicon (PyTorch MPS) and NVIDIA GPUs (Py
 | M6 | What is a request over time? | State machine | ✅ |
 | M7 | The client sees nothing until the whole answer is done | Streaming + abort | ✅ |
 | M8 | Running one request at a time wastes the GPU | Static batching | ✅ |
-| M9 | Some requests in a batch finish early | Continuous batching |  |
+| M9 | Some requests in a batch finish early | Continuous batching | ✅ |
 | M10 | Each request wants different sampling settings | Per-request sampling |  |
 | M11 | Where is the time actually going? | Profiling |  |
 | M12 | What does the model actually compute? | Own model + packed tokens |  |
@@ -295,6 +295,7 @@ Out of scope: KV cache.
 
 - Continuous batching is a scheduling problem, not a Transformer problem.
 - The scheduler's real job is to rebuild the workload on every step.
+- Fewer steps do not always mean more tokens per second. Without a KV cache, each step recomputes every request's whole sequence, so scheduling cannot remove any work, and mixing old and new requests adds padding. Refilling slots pays off when an extra row is cheap: short sequences, or one token per generating request once a KV cache exists.
 
 **Compare with SGLang**: `filter_batch()` and `merge_batch()` in `managers/schedule_batch.py`, `get_next_batch_to_run()` and `update_running_batch()` in `managers/scheduler.py`. SGLang runs new requests in their own prefill batch first and merges them into `running_batch` on the next step; without a KV cache, one mixed forward pass is simpler here.
 

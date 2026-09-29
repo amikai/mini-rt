@@ -70,9 +70,7 @@ class Scheduler:
         if req is not None:
             self.waiting_queue.remove(req)
         else:
-            # TODO(M9-3): find recv_req.rid in running_batch.
-            # running_batch can still hold a request that ended last step; aborting it again is an illegal transition.
-            raise NotImplementedError
+            req = next((r for r in self.running_batch if r.rid == recv_req.rid and not r.finished()), None)
         if req is None:
             return  # already ended, or never existed
         req.finished_reason = FINISH_ABORT()
@@ -81,15 +79,21 @@ class Scheduler:
         self.end_req(req, ReqStatus.ABORTED)
 
     def get_next_batch_to_run(self) -> list[Req] | None:
-        # TODO(M9-1): re-decide the batch every step.
-        # 1. Drop requests that ended since the last step, like SGLang's filter_batch().
-        # 2. Append get_new_batch_prefill() to running_batch, like SGLang's merge_batch().
-        # 3. Return running_batch, or None when it is empty.
-        raise NotImplementedError
+        # Drop requests that ended since the last step, like SGLang's filter_batch().
+        self.running_batch = [req for req in self.running_batch if not req.finished()]
+        # Fill the free slots, like SGLang's merge_batch().
+        self.running_batch.extend(self.get_new_batch_prefill())
+        return self.running_batch or None
 
     def get_new_batch_prefill(self) -> list[Req]:
-        # TODO(M9-2): take the oldest waiting requests that fit in the free slots; mark each RUNNING.
-        raise NotImplementedError
+        # Oldest waiting requests first, up to the free slots.
+        free_slots = self.max_batch_size - len(self.running_batch)
+        new_reqs = []
+        for _ in range(min(free_slots, len(self.waiting_queue))):
+            req = self.waiting_queue.popleft()
+            req.set_status(ReqStatus.RUNNING)
+            new_reqs.append(req)
+        return new_reqs
 
     def run_batch(self, batch: list[Req]) -> list[int]:
         logits = self.model_runner.forward(batch)
